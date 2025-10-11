@@ -11,14 +11,58 @@ A "tap" is a brief press of a key combination (by default within 0.2 seconds). T
 This project consists of two phases:
 
 ### Phase 0: `tap-detector` (Current)
+
 An interactive utility to help users identify tap combinations. It displays detected taps in real-time and provides ready-to-use TOML configuration fragments.
+
+A tap is a brief press-and-release of one or more keys. All keys must be pressed and released within the timeout period for the tap to be valid.
+
+**Features:**
+- Real-time tap detection
+- Generates ready-to-use TOML config fragments
+- Distinguishes between left and right modifiers (e.g., `ctrl_l` vs `ctrl_r`)
+- Supports all keyboard keys: modifiers, function keys, navigation keys, and regular characters
+- Verbose mode for debugging and detailed traces
 
 **Usage:**
 ```bash
-tap-detector                  # Run with default timeout (0.2s)
-tap-detector --timeout 0.3    # Custom timeout
-tap-detector --verbose        # Verbose output for debugging
+# Run with default timeout (0.2s)
+tap-detector
+
+# Custom timeout (useful for slower taps)
+tap-detector --timeout 0.3
+
+# Verbose output for debugging
+tap-detector --verbose
+
+# Combine options
+tap-detector --timeout 0.15 --verbose
 ```
+
+**Example output:**
+```
+🎹 Tap Detector v0.1.0
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+Detecting taps with timeout: 0.2s
+Press Ctrl+C to exit
+
+Listening for taps...
+
+✓ Tap detected! Duration: 0.18s
+  Keys: ctrl_l+shift_l
+  
+  📋 TOML config fragment (copy to config.toml):
+  ────────────────────────────────────────────
+  [[hotkeys]]
+  keys = ["ctrl_l", "shift_l"]
+  command = "your-command-here"
+  args = []
+  description = "Description here"
+  ────────────────────────────────────────────
+
+Listening for taps...
+```
+
+Simply copy the TOML fragment into your `config.toml` file and customize the command!
 
 ### Phase 1: `tap-launcher` (Future)
 The main daemon application that monitors for configured taps and executes commands.
@@ -57,8 +101,37 @@ tap-detector
 This project uses:
 - **Python 3.13** for latest features and performance
 - **pynput** for keyboard monitoring (X11)
-- **click** for CLI interface
+- **Typer** for modern CLI interface
 - **uv** for fast dependency management
+
+### Project Structure
+
+```
+tapper_launch/
+├── src/
+│   └── tap_detector/           # Phase 0: Tap detector application
+│       ├── __init__.py
+│       ├── main.py             # CLI entry point (Typer)
+│       ├── tap_monitor.py      # Core tap detection logic
+│       ├── key_normalizer.py   # Key normalization and mapping
+│       ├── formatter.py        # Output formatting
+│       └── constants.py        # Constants and version
+├── config/
+│   └── tap-launcher.toml.example  # Example configuration with KEY_MAPPING reference
+├── docs/
+│   ├── key-mapping.md          # Complete key mapping reference
+│   └── ...                     # Other documentation
+├── pyproject.toml              # Project metadata and dependencies
+└── README.md
+```
+
+### Key Mapping
+
+The application distinguishes between left and right modifier keys. See:
+- `docs/key-mapping.md` - Complete reference
+- `config/tap-launcher.toml.example` - Quick reference in comments
+
+Use `tap-detector` to discover the canonical names for any key combination!
 
 ## Configuration
 
@@ -70,12 +143,27 @@ Example configuration structure:
 tap_timeout = 0.2      # seconds
 log_level = "INFO"
 
+# Note: We distinguish left/right modifiers!
 [[hotkeys]]
-keys = ["ctrl", "alt"]
+keys = ["ctrl_l", "alt_l"]
 command = "gnome-terminal"
 args = []
 description = "Open terminal"
+
+[[hotkeys]]
+keys = ["ctrl_l", "shift_l"]
+command = "setxkbmap"
+args = ["us"]
+description = "Switch to English layout"
+
+[[hotkeys]]
+keys = ["ctrl_r", "shift_r"]
+command = "setxkbmap"
+args = ["ru"]
+description = "Switch to Russian layout"
 ```
+
+See `config/tap-launcher.toml.example` for a complete example with KEY_MAPPING reference.
 
 ## License
 

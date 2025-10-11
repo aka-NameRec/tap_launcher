@@ -1,6 +1,40 @@
 # Tap Launcher Configuration Example
 # Copy this file to ~/.config/tap-launcher/config.toml and customize
 
+# ==============================================================================
+# KEY MAPPING REFERENCE
+# ==============================================================================
+#
+# Use 'tap-detector' to discover key combinations. It will show canonical names.
+#
+# MODIFIERS (distinguish left/right):
+#   ctrl_l, ctrl_r     - Left/Right Control
+#   shift_l, shift_r   - Left/Right Shift
+#   alt_l, alt_r       - Left/Right Alt
+#   super_l, super_r   - Left/Right Super/Windows/Command
+#   alt_gr             - AltGr (right Alt with special function)
+#
+# FUNCTION KEYS:
+#   f1, f2, ..., f20
+#
+# NAVIGATION:
+#   up, down, left, right, home, end, page_up, page_down, insert, delete
+#
+# SPECIAL KEYS:
+#   space, enter, tab, backspace, esc, caps_lock, print_screen, scroll_lock,
+#   pause, menu, num_lock
+#
+# REGULAR KEYS:
+#   a-z (lowercase), 0-9, and other characters
+#
+# EXAMPLE:
+#   keys = ["ctrl_l", "shift_l"]     # Left Ctrl + Left Shift
+#   keys = ["ctrl_r", "shift_r"]     # Right Ctrl + Right Shift
+#   keys = ["ctrl_l", "alt_l", "t"]  # Left Ctrl + Left Alt + T
+#
+# For complete reference, see: docs/key-mapping.md
+# ==============================================================================
+
 [app]
 # Tap timeout in seconds - maximum duration for a valid tap
 tap_timeout = 0.2

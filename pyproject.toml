@@ -6,11 +6,11 @@ readme = "README.md"
 requires-python = ">=3.13"
 dependencies = [
     "pynput>=1.7.7",
-    "click>=8.1.0",
+    "typer>=0.9.0",
 ]
 
 [project.scripts]
-tap-detector = "tap_detector.main:main"
+tap-detector = "tap_detector.main:app"
 
 [build-system]
 requires = ["hatchling"]
