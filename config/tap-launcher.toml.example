@@ -47,27 +47,52 @@ log_file = "~/.local/share/tap-launcher/tap-launcher.log"
 debug_mode = false
 verbose_logging = false
 
+# ==============================================================================
+# HOTKEY CONFIGURATIONS
+# ==============================================================================
 # Multiple hotkey configurations
 # Use tap-detector to find your key combinations!
 
+# Example 1: Switch keyboard layout (left/right distinction is useful here!)
 [[hotkeys]]
-keys = ["ctrl", "alt"]
+keys = ["ctrl_l", "shift_l"]
+command = "switch_language"
+args = ["us"]
+description = "Switch to English layout"
+
+[[hotkeys]]
+keys = ["ctrl_r", "shift_r"]
+command = "switch_language"
+args = ["ru"]
+description = "Switch to Russian layout"
+
+# Example 2: Open terminal (classic Linux shortcut)
+[[hotkeys]]
+keys = ["ctrl_l", "alt_l", "t"]
 command = "gnome-terminal"
 args = []
 description = "Open GNOME Terminal"
 
+# Example 3: Open Firefox
 [[hotkeys]]
-keys = ["ctrl", "shift"]
-command = "/usr/bin/firefox"
+keys = ["super_l", "alt_l"]
+command = "firefox"
 args = ["--new-window"]
 description = "Open Firefox in new window"
 
+# Example 4: Custom script
 [[hotkeys]]
-keys = ["super", "alt"]
+keys = ["super_l", "shift_l"]
 command = "/home/user/scripts/custom-script.sh"
 args = []
 description = "Run custom script"
 
+# Example 5: Control media playback
+# [[hotkeys]]
+# keys = ["ctrl_l", "alt_l", "p"]
+# command = "playerctl"
+# args = ["play-pause"]
+# description = "Play/pause media"
+
 # You can add more hotkey combinations here
 # Run 'tap-detector' to discover available key combinations
-

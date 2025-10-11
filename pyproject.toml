@@ -11,6 +11,7 @@ dependencies = [
 
 [project.scripts]
 tap-detector = "tap_detector.main:app"
+tap-launcher = "tap_launcher.main:app"
 
 [build-system]
 requires = ["hatchling"]
@@ -20,4 +21,4 @@ build-backend = "hatchling.build"
 dev-dependencies = []
 
 [tool.hatch.build.targets.wheel]
-packages = ["src/tap_detector"]
+packages = ["src/tap_detector", "src/tap_launcher"]

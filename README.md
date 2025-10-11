@@ -64,8 +64,53 @@ Listening for taps...
 
 Simply copy the TOML fragment into your `config.toml` file and customize the command!
 
-### Phase 1: `tap-launcher` (Future)
+### Phase 1: `tap-launcher` (Current)
+
 The main daemon application that monitors for configured taps and executes commands.
+
+**Features:**
+- Background daemon process
+- TOML configuration file support
+- Multiple hotkey combinations
+- Command execution with arguments
+- PID file management
+- Logging support
+- CLI for process control (start/stop/restart/status)
+
+**Usage:**
+```bash
+# Check configuration
+tap-launcher check-config
+
+# Start daemon
+tap-launcher start
+
+# Check status
+tap-launcher status
+
+# Stop daemon
+tap-launcher stop
+
+# Restart (useful after config changes)
+tap-launcher restart
+```
+
+**Configuration:**
+
+Create `~/.config/tap-launcher/config.toml`:
+```toml
+[app]
+tap_timeout = 0.2
+log_level = "INFO"
+
+[[hotkeys]]
+keys = ["ctrl_l", "shift_l"]
+command = "setxkbmap"
+args = ["us"]
+description = "Switch to English layout"
+```
+
+See `docs/tap-launcher-usage.md` for complete documentation.
 
 ## Requirements
 
