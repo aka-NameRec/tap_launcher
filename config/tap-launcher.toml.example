@@ -1,0 +1,39 @@
+# Tap Launcher Configuration Example
+# Copy this file to ~/.config/tap-launcher/config.toml and customize
+
+[app]
+# Tap timeout in seconds - maximum duration for a valid tap
+tap_timeout = 0.2
+
+# Logging configuration
+log_level = "INFO"  # DEBUG, INFO, WARNING, ERROR
+log_file = "~/.local/share/tap-launcher/tap-launcher.log"
+
+# Enable debug mode for troubleshooting
+debug_mode = false
+verbose_logging = false
+
+# Multiple hotkey configurations
+# Use tap-detector to find your key combinations!
+
+[[hotkeys]]
+keys = ["ctrl", "alt"]
+command = "gnome-terminal"
+args = []
+description = "Open GNOME Terminal"
+
+[[hotkeys]]
+keys = ["ctrl", "shift"]
+command = "/usr/bin/firefox"
+args = ["--new-window"]
+description = "Open Firefox in new window"
+
+[[hotkeys]]
+keys = ["super", "alt"]
+command = "/home/user/scripts/custom-script.sh"
+args = []
+description = "Run custom script"
+
+# You can add more hotkey combinations here
+# Run 'tap-detector' to discover available key combinations
+

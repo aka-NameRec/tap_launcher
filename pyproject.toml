@@ -1,0 +1,23 @@
+[project]
+name = "tap-launcher"
+version = "0.1.0"
+description = "Tap Launcher: Application for detecting keyboard tap combinations and launching commands"
+readme = "README.md"
+requires-python = ">=3.13"
+dependencies = [
+    "pynput>=1.7.7",
+    "click>=8.1.0",
+]
+
+[project.scripts]
+tap-detector = "tap_detector.main:main"
+
+[build-system]
+requires = ["hatchling"]
+build-backend = "hatchling.build"
+
+[tool.uv]
+dev-dependencies = []
+
+[tool.hatch.build.targets.wheel]
+packages = ["src/tap_detector"]
