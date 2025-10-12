@@ -4,5 +4,5 @@
 DEFAULT_TIMEOUT = 0.2
 
 # Version
-__version__ = "0.1.0"
+__version__ = '0.1.0'
 

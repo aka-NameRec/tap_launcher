@@ -18,7 +18,46 @@ requires = ["hatchling"]
 build-backend = "hatchling.build"
 
 [tool.uv]
-dev-dependencies = []
+dev-dependencies = [
+    "types-psutil>=7.0.0.20251001",
+    "types-pynput>=1.8.1.20250809",
+    "mypy",
+    "ruff",
+]
+
+[tool.mypy]
+python_version = "3.13"
+disable_error_code = ["explicit-override"]
+explicit_package_bases = true
+implicit_reexport = true
+no_implicit_optional = true
+ignore_missing_imports = true
+follow_imports = "skip"
+disallow_untyped_defs = true
+disallow_any_expr = false
+disallow_any_explicit = false
+disallow_any_decorated = false
+disallow_subclassing_any = false
+disallow_any_unimported = false
+disallow_untyped_calls = false
+
+[tool.ruff]
+line-length = 120
+exclude = ["migrations", "tests", "manage.py"]
+
+[tool.ruff.lint]
+select = ["E", "F", "B", "Q", "T", "N", "UP", "W", "C90", "COM", "PYI", "RSE", "RET", "SIM", "TID", "TCH", "ARG", "PT", "PTH", "ERA", "PGH", "PL", "TRY", "RUF", "ANN", "S", "BLE", "C4", "PIE", "I"]
+ignore = ["RUF001", "RUF003", "D203", "D213", "ANN401", "S101", "ANN201", "ANN003", "COM812"]
+
+[tool.ruff.lint.flake8-quotes]
+inline-quotes = "single"
+multiline-quotes = "double"
+
+[tool.ruff.lint.isort]
+force-single-line = true
+
+[tool.ruff.format]
+quote-style = "single"
 
 [tool.hatch.build.targets.wheel]
 packages = ["src/tap_detector", "src/tap_launcher"]
