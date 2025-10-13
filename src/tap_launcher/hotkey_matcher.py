@@ -29,6 +29,17 @@ class HotkeyMatcher:
             hk.keys_set(): hk for hk in hotkeys
         }
 
+        # Build index for delayed timer start feature
+        # Map: first key name -> list of hotkeys with start_timer_from_second_key=True
+        self._delayed_start_map: dict[str, list[HotkeyConfig]] = {}
+        for hk in hotkeys:
+            if hk.start_timer_from_second_key and len(hk.keys) >= 2:
+                # Index by each key in the combination
+                for key in hk.keys:
+                    if key not in self._delayed_start_map:
+                        self._delayed_start_map[key] = []
+                    self._delayed_start_map[key].append(hk)
+
     def match(self, detected_keys: set[Any]) -> HotkeyConfig | None:
         """Match detected keys against configured hotkeys.
 
@@ -81,5 +92,36 @@ class HotkeyMatcher:
             list[frozenset[str]]: List of all configured key combinations
         """
         return list(self._hotkey_map.keys())
+
+    def should_delay_timer_start(self, first_key_normalized: str) -> bool:
+        """Check if timer start should be delayed for the given first key.
+
+        Returns True if there is at least one hotkey combination that:
+        - Starts with the given key
+        - Has start_timer_from_second_key=True
+
+        This is used by TapMonitor to determine whether to delay the
+        timer start when the first key is pressed.
+
+        Args:
+            first_key_normalized: Normalized name of the first pressed key
+
+        Returns:
+            bool: True if timer should be delayed, False otherwise
+
+        Example:
+            >>> matcher = HotkeyMatcher([
+            ...     HotkeyConfig(
+            ...         keys=["ctrl_l", "shift_l"],
+            ...         command="cmd",
+            ...         start_timer_from_second_key=True
+            ...     )
+            ... ])
+            >>> matcher.should_delay_timer_start("ctrl_l")
+            True
+            >>> matcher.should_delay_timer_start("alt_l")
+            False
+        """
+        return first_key_normalized in self._delayed_start_map
 
 

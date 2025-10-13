@@ -25,13 +25,15 @@ class TapState:
     Attributes:
         pressed_keys: Set of currently pressed keys
         tap_combination: Set of all keys that have been pressed during this tap
-        start_time: Timestamp when the first key was pressed (None if not active)
+        start_time: Timestamp when the tap timer started (None if not started yet)
         is_active: Whether a tap is currently in progress
+        timer_delayed: True if timer start is delayed until second key press
     """
     pressed_keys: set[Any] = field(default_factory=set)
     tap_combination: set[Any] = field(default_factory=set)
     start_time: float | None = None
     is_active: bool = False
+    timer_delayed: bool = False
 
     def reset(self) -> None:
         """Reset the tap state to initial values."""
@@ -39,6 +41,7 @@ class TapState:
         self.tap_combination.clear()
         self.start_time = None
         self.is_active = False
+        self.timer_delayed = False
 
 
 class TapMonitor:
@@ -52,6 +55,8 @@ class TapMonitor:
         verbose: Whether to output verbose debug information
         on_tap_detected: Callback when a valid tap is detected (keys, duration)
         on_tap_invalid: Callback when an invalid tap is detected (reason, keys, duration)
+        check_timer_delay: Optional callback to check if timer should be delayed for a key.
+            Takes normalized key name (str), returns True to delay timer start.
     """
 
     def __init__(
@@ -60,12 +65,14 @@ class TapMonitor:
         verbose: bool = False,
         on_tap_detected: Callable[[set[Any], float], None] | None = None,
         on_tap_invalid: Callable[[str, set[Any], float], None] | None = None,
+        check_timer_delay: Callable[[str], bool] | None = None,
     ) -> None:
         self.timeout = timeout
         self.verbose = verbose
         self.state = TapState()
         self.on_tap_detected = on_tap_detected
         self.on_tap_invalid = on_tap_invalid
+        self.check_timer_delay = check_timer_delay
         self.listener: keyboard.Listener | None = None  # Will be set when start() is called
 
     def start(self) -> None:
@@ -103,33 +110,59 @@ class TapMonitor:
             return
 
         current_time = perf_counter()
+        normalized_key = normalize_key(key)
 
-        # If this is the first key, start the tap
+        # If this is the first key, check if we should delay timer start
         if not self.state.is_active:
-            self.state.start_time = current_time
-            self.state.is_active = True
+            # Check if timer should be delayed
+            should_delay = self.check_timer_delay and self.check_timer_delay(normalized_key)
 
-            if self.verbose:
-                elapsed = 0.0
-                print(format_verbose_press(normalize_key(key), elapsed, is_first=True))  # noqa: T201
-        # Additional key in an ongoing tap
-        elif self.state.start_time is not None:
-            elapsed = current_time - self.state.start_time
+            if should_delay:
+                # Delay timer start until second key
+                self.state.is_active = True
+                self.state.timer_delayed = True
+                self.state.start_time = None
 
-            # Check if timeout already exceeded
-            if elapsed > self.timeout:
                 if self.verbose:
-                    print(f'[TRACE]        → Timeout exceeded during tap: {elapsed:.3f}s > {self.timeout:.3f}s')  # noqa: T201
-
-                # Reset state and start a new tap
-                self.state.reset()
+                    print(f'[TRACE] 0.000s: {normalized_key} pressed')  # noqa: T201
+                    print('[TRACE]        → Tap started, timer delayed until second key')  # noqa: T201
+            else:
+                # Classic behavior: start timer immediately
                 self.state.start_time = current_time
                 self.state.is_active = True
 
                 if self.verbose:
-                    print(format_verbose_press(normalize_key(key), 0.0, is_first=True))  # noqa: T201
-            elif self.verbose:
-                print(format_verbose_press(normalize_key(key), elapsed, is_first=False))  # noqa: T201
+                    print(format_verbose_press(normalized_key, 0.0, is_first=True))  # noqa: T201
+
+        # Additional key in an ongoing tap
+        else:
+            # If timer was delayed and not started yet, start it now (second key)
+            if self.state.timer_delayed and self.state.start_time is None:
+                self.state.start_time = current_time
+                self.state.timer_delayed = False
+
+                if self.verbose:
+                    print(f'[TRACE] 0.000s: {normalized_key} pressed')  # noqa: T201
+                    print('[TRACE]        → Timer started NOW (second key)')  # noqa: T201
+
+            # Timer is already running
+            elif self.state.start_time is not None:
+                elapsed = current_time - self.state.start_time
+
+                # Check if timeout already exceeded
+                if elapsed > self.timeout:
+                    if self.verbose:
+                        print(f'[TRACE]        → Timeout exceeded during tap: {elapsed:.3f}s > {self.timeout:.3f}s')  # noqa: T201
+
+                    # Reset state and start a new tap
+                    self.state.reset()
+                    self.state.start_time = current_time
+                    self.state.is_active = True
+
+                    if self.verbose:
+                        print(format_verbose_press(normalized_key, 0.0, is_first=True))  # noqa: T201
+                elif self.verbose:
+                    print(format_verbose_press(normalized_key, elapsed, is_first=False))  # noqa: T201
 
         # Add key to pressed and combination sets
         self.state.pressed_keys.add(key)
@@ -151,7 +184,24 @@ class TapMonitor:
                 print(format_verbose_release(normalize_key(key), elapsed, all_released))  # noqa: T201
 
         # If all keys are released, check if this was a valid tap
-        if not self.state.pressed_keys and self.state.is_active and self.state.start_time is not None:
+        if not self.state.pressed_keys and self.state.is_active:
+            # If timer was never started (only one key pressed with delayed timer)
+            if self.state.start_time is None:
+                if self.verbose:
+                    print('[DEBUG] Tap invalid: timer never started (insufficient keys)')  # noqa: T201
+
+                # This is an invalid tap - combination requires at least 2 keys
+                if self.on_tap_invalid:
+                    self.on_tap_invalid('insufficient keys', self.state.tap_combination.copy(), 0.0)
+
+                # Reset state
+                self.state.reset()
+
+                if self.verbose:
+                    print(format_verbose_waiting())  # noqa: T201
+                return
+
+            # Normal validation with timer
             end_time = perf_counter()
             duration = end_time - self.state.start_time
 

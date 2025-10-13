@@ -168,11 +168,16 @@ class ConfigLoader:
         if not isinstance(description, str):
             raise TypeError("'description' must be a string")  # noqa: TRY003
 
+        start_timer_from_second_key = data.get('start_timer_from_second_key', False)
+        if not isinstance(start_timer_from_second_key, bool):
+            raise TypeError("'start_timer_from_second_key' must be a boolean")  # noqa: TRY003
+
         return HotkeyConfig(
             keys=keys,
             command=command,
             args=args,
             description=description,
+            start_timer_from_second_key=start_timer_from_second_key,
         )
 
 

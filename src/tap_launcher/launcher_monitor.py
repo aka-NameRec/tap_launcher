@@ -47,6 +47,7 @@ class LauncherMonitor:
             verbose=config.verbose_logging,
             on_tap_detected=self._on_tap_detected,
             on_tap_invalid=None,  # We don't need invalid tap notifications
+            check_timer_delay=self._check_timer_delay,  # Check if timer should be delayed
         )
 
     def start(self) -> None:
@@ -86,6 +87,20 @@ class LauncherMonitor:
         if self.tap_monitor:
             self.tap_monitor.stop()
             self.logger.info('Tap monitor stopped')
+
+    def _check_timer_delay(self, first_key_normalized: str) -> bool:
+        """Check if timer should be delayed for the given first key.
+
+        This callback is called by TapMonitor when the first key is pressed
+        to determine if the tap timer should be delayed until the second key.
+
+        Args:
+            first_key_normalized: Normalized name of the first pressed key
+
+        Returns:
+            bool: True if timer should be delayed, False otherwise
+        """
+        return self.matcher.should_delay_timer_start(first_key_normalized)
 
     def _on_tap_detected(self, keys: set[Any], duration: float) -> None:
         """Callback when a valid tap is detected.

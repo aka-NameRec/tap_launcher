@@ -14,11 +14,16 @@ class HotkeyConfig:
         command: Path to command to execute
         args: Command-line arguments for the command
         description: Human-readable description of the hotkey action
+        start_timer_from_second_key: If True, tap timer starts from the second key press.
+            This is useful for combinations where the first key may be held down
+            while searching for the second key (e.g., Ctrl held, then Shift found).
+            Default is False (classic behavior: timer starts from first key).
     """
     keys: list[str]
     command: str
     args: list[str] = field(default_factory=list)
     description: str = ''
+    start_timer_from_second_key: bool = False
 
     def keys_set(self) -> frozenset[str]:
         """Return keys as a frozen set for comparison.
