@@ -4,11 +4,11 @@
 
 ## Overview
 
-A "tap" is a brief press of a key combination (by default within 0.2 seconds). The application monitors keyboard events and executes configured commands when a valid tap is detected.
+A "tap" is a brief press of a key combination. The application monitors keyboard events and executes configured commands when a valid tap is detected.
 
 ## Features
 
-- **Real-time tap detection** with configurable timeout
+- **Real-time key detection** with no time restrictions
 - **Background daemon** for continuous monitoring
 - **TOML configuration** for easy setup
 - **Left/right modifier distinction** (e.g., `ctrl_l` vs `ctrl_r`)
@@ -51,16 +51,13 @@ A "tap" is a brief press of a key combination (by default within 0.2 seconds). T
 
 ### tap-detector
 
-Interactive utility for discovering tap combinations. Displays detected taps in real-time and provides ready-to-use TOML configuration fragments.
+Interactive utility for discovering key combinations. Displays detected keys in real-time and provides ready-to-use TOML configuration fragments.
 
 **Usage:**
 
 ```bash
 # Basic usage
 tap-detector
-
-# Custom timeout
-tap-detector --timeout 0.3
 
 # Verbose output
 tap-detector --verbose
@@ -95,7 +92,6 @@ Create `~/.config/tap-launcher/config.toml`:
 
 ```toml
 [app]
-tap_timeout = 0.2
 log_level = "INFO"
 
 [[hotkeys]]

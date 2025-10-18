@@ -17,11 +17,8 @@ uv sync
 ### Basic Usage
 
 ```bash
-# Run with default settings (0.2s timeout)
+# Run with default settings (no time restrictions)
 uv run tap-detector
-
-# Run with custom timeout
-uv run tap-detector --timeout 0.3
 
 # Run with verbose output for debugging
 uv run tap-detector --verbose
@@ -30,8 +27,8 @@ uv run tap-detector --verbose
 ### How to Use
 
 1. Start the detector
-2. Press and release a key combination quickly (within the timeout)
-3. The detector will show you the detected tap and provide a TOML config fragment
+2. Press and release a key combination
+3. The detector will show you the detected keys and provide a TOML config fragment
 4. Copy the TOML fragment into your `config.toml` file
 5. Press Ctrl+C to exit
 
@@ -42,13 +39,13 @@ $ uv run tap-detector
 
 🎹 Tap Detector v0.1.0
 ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
-Detecting taps with timeout: 0.2s
+Detecting key combinations (no time restrictions)
 Press Ctrl+C to exit
 
-Listening for taps...
+Listening for key combinations...
 
-✓ Tap detected! Duration: 0.18s
-  Keys: ctrl_l+shift_l
+✓ Keys detected: ctrl_l+shift_l
+  Duration: 0.18s
   
   📋 TOML config fragment (copy to config.toml):
   ────────────────────────────────────────────
@@ -59,7 +56,7 @@ Listening for taps...
   description = "Description here"
   ────────────────────────────────────────────
 
-Listening for taps...
+Listening for key combinations...
 ```
 
 ## Important Notes
@@ -76,14 +73,12 @@ This is intentional and allows you to create different actions for different sid
 - Left Shift + Left Ctrl → Switch to English layout
 - Right Shift + Right Ctrl → Switch to Russian layout
 
-### What is a Valid Tap?
+### Key Detection
 
-A tap is valid when:
+Keys are detected when:
 1. You press one or more keys
-2. You release **all** keys within the timeout period (default: 0.2 seconds)
-3. No additional keys were pressed during the tap
-
-If you hold keys too long or press additional keys, the tap will be marked as invalid.
+2. You release **all** keys (no time restrictions)
+3. **All pressed keys** are included in the output
 
 ### Supported Keys
 
@@ -108,7 +103,7 @@ If you get permission errors accessing the keyboard:
 
 1. Make sure your terminal/IDE doesn't capture the key combination first
 2. Try with `--verbose` to see debug output
-3. Check if the timeout is too short - try `--timeout 0.3`
+3. Check if the keys are being recognized
 
 ### Application Doesn't Start
 
@@ -132,4 +127,3 @@ cp config/tap-launcher.toml.example ~/.config/tap-launcher/config.toml
 ## Getting Help
 
 Run `tap-detector --help` for command-line options.
-

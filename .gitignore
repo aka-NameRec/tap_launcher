@@ -52,3 +52,6 @@ htmlcov/
 
 # Local config
 config/local*.toml
+
+# ConPort data
+context_portal/

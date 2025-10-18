@@ -36,9 +36,6 @@
 # ==============================================================================
 
 [app]
-# Tap timeout in seconds - maximum duration for a valid tap
-tap_timeout = 0.2
-
 # Logging configuration
 log_level = "INFO"  # DEBUG, INFO, WARNING, ERROR
 log_file = "~/.local/share/tap-launcher/tap-launcher.log"
@@ -53,46 +50,25 @@ verbose_logging = false
 # Multiple hotkey configurations
 # Use tap-detector to find your key combinations!
 #
-# ADVANCED FEATURE: start_timer_from_second_key
-# By default (false), the tap timer starts when you press the FIRST key.
-# If set to true, the timer starts when you press the SECOND key.
-# This is useful when you might hold down the first key while searching
-# for the second key (e.g., holding Ctrl while finding Shift).
-#
-# Without start_timer_from_second_key (classic behavior):
-#   Press Ctrl at t=0.00s → timer starts
-#   Press Shift at t=0.15s (searching for it!)
-#   Release all at t=0.25s → duration = 0.25s > 0.2s timeout ❌ INVALID
-#
-# With start_timer_from_second_key=true:
-#   Press Ctrl at t=0.00s → timer NOT started yet
-#   Press Shift at t=0.15s → timer starts NOW
-#   Release all at t=0.25s → duration = 0.10s < 0.2s timeout ✅ VALID
-
-# Example 1: Switch keyboard layout with delayed timer start
-# (allows you to hold down first key while finding second key)
+# Example 1: Switch keyboard layout
 [[hotkeys]]
 keys = ["ctrl_l", "shift_l"]
 command = "setxkbmap"
 args = ["us"]
 description = "Switch to English layout"
-start_timer_from_second_key = true  # Timer starts from second key
 
 [[hotkeys]]
 keys = ["ctrl_r", "shift_r"]
 command = "setxkbmap"
 args = ["ru"]
 description = "Switch to Russian layout"
-start_timer_from_second_key = true  # Timer starts from second key
 
-# Example 2: Open terminal with classic tap behavior
-# (timer starts from first key - default behavior)
+# Example 2: Open terminal
 [[hotkeys]]
 keys = ["ctrl_l", "alt_l", "t"]
 command = "gnome-terminal"
 args = []
 description = "Open GNOME Terminal"
-# start_timer_from_second_key = false  # Default, can be omitted
 
 # Example 3: Open Firefox
 [[hotkeys]]

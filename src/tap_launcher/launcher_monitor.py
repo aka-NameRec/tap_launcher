@@ -41,11 +41,11 @@ class LauncherMonitor:
         self.executor = executor
         self.logger = logging.getLogger('tap_launcher.monitor')
 
-        # Create TapMonitor from tap_detector
+        # Create TapMonitor from tap_detector with validation
         self.tap_monitor = TapMonitor(
             timeout=config.tap_timeout,
             verbose=config.verbose_logging,
-            on_tap_detected=self._on_tap_detected,
+            on_keys_detected=self._on_tap_detected,
             on_tap_invalid=None,  # We don't need invalid tap notifications
             check_timer_delay=self._check_timer_delay,  # Check if timer should be delayed
         )

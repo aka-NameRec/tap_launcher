@@ -1,6 +1,6 @@
 """Output formatting utilities for tap detector.
 
-This module provides functions to format tap detection results for console output,
+This module provides functions to format key detection results for console output,
 including TOML configuration fragments.
 """
 
@@ -9,30 +9,27 @@ from .key_normalizer import format_keys_display
 from .key_normalizer import format_keys_toml
 
 
-def format_header(timeout: float) -> str:
+def format_header() -> str:
     """Format the application header.
-
-    Args:
-        timeout: Tap timeout in seconds
-
+        
     Returns:
         str: Formatted header string
     """
     return f"""🎹 Tap Detector v{__version__}
 ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
-Detecting taps with timeout: {timeout}s
+Detecting key combinations (no time restrictions)
 Press Ctrl+C to exit
 
-Listening for taps...
+Listening for key combinations...
 """
 
 
-def format_tap_detected(keys: set, duration: float) -> str:
-    """Format a successful tap detection message.
+def format_keys_detected(keys: set, duration: float) -> str:
+    """Format a key combination detection message.
 
     Args:
         keys: Set of pynput Key/KeyCode objects that were detected
-        duration: Duration of the tap in seconds
+        duration: Duration of the key combination in seconds (ignored in display)
 
     Returns:
         str: Formatted message with TOML config fragment
@@ -41,8 +38,7 @@ def format_tap_detected(keys: set, duration: float) -> str:
     keys_toml = format_keys_toml(keys)
 
     return f"""
-✓ Tap detected! Duration: {duration:.2f}s
-  Keys: {keys_display}
+✓ Keys detected: {keys_display}
 
   📋 TOML config fragment (copy to config.toml):
   ────────────────────────────────────────────
@@ -53,29 +49,7 @@ def format_tap_detected(keys: set, duration: float) -> str:
   description = "Description here"
   ────────────────────────────────────────────
 
-Listening for taps...
-"""
-
-
-def format_tap_invalid(reason: str, keys: set, duration: float) -> str:
-    """Format an invalid tap message.
-
-    Args:
-        reason: Reason why the tap was invalid
-        keys: Set of pynput Key/KeyCode objects that were pressed
-        duration: Duration attempted
-
-    Returns:
-        str: Formatted error message
-    """
-    keys_display = format_keys_display(keys)
-
-    return f"""
-✗ Invalid tap ({reason}: {duration:.2f}s)
-  Keys: {keys_display}
-  Hint: Release keys faster for a valid tap!
-
-Listening for taps...
+Listening for key combinations...
 """
 
 
@@ -84,14 +58,14 @@ def format_verbose_press(key_str: str, elapsed: float, is_first: bool) -> str:
 
     Args:
         key_str: Normalized key string
-        elapsed: Time elapsed since tap start
-        is_first: Whether this is the first key in the tap
+        elapsed: Time elapsed since combination start
+        is_first: Whether this is the first key in the combination
 
     Returns:
         str: Formatted trace message
     """
     if is_first:
-        return f'[TRACE] {elapsed:.3f}s: {key_str} pressed\n[TRACE]        → Tap started'
+        return f'[TRACE] {elapsed:.3f}s: {key_str} pressed\n[TRACE]        → Combination started'
     return f'[TRACE] {elapsed:.3f}s: {key_str} pressed'
 
 
@@ -100,7 +74,7 @@ def format_verbose_release(key_str: str, elapsed: float, all_released: bool) -> 
 
     Args:
         key_str: Normalized key string
-        elapsed: Time elapsed since tap start
+        elapsed: Time elapsed since combination start
         all_released: Whether all keys have been released
 
     Returns:
@@ -112,43 +86,40 @@ def format_verbose_release(key_str: str, elapsed: float, all_released: bool) -> 
     return msg
 
 
-def format_verbose_tap_result(is_valid: bool, duration: float, timeout: float, keys: set) -> str:
-    """Format verbose tap validation result.
-
-    Args:
-        is_valid: Whether the tap is valid
-        duration: Tap duration in seconds
-        timeout: Configured timeout
-        keys: Set of keys in the tap
-
-    Returns:
-        str: Formatted debug message
-    """
-    keys_display = format_keys_display(keys)
-
-    if is_valid:
-        return f'[DEBUG] Tap valid! Duration: {duration:.3f}s < {timeout:.3f}s'
-    return (
-        f'[DEBUG] Tap invalid: timeout exceeded ({duration:.3f}s > {timeout:.3f}s)\n'
-        f'[DEBUG] Keys attempted: {keys_display}'
-    )
-
-
-def format_verbose_header(timeout: float) -> str:
+def format_verbose_header() -> str:
     """Format the verbose mode header.
-
-    Args:
-        timeout: Tap timeout in seconds
 
     Returns:
         str: Formatted header string
     """
     return f"""🎹 Tap Detector v{__version__} (verbose mode)
 ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
-Detecting taps with timeout: {timeout}s
+Detecting key combinations (no time restrictions)
 
 [DEBUG] Waiting for key events...
 """
+
+
+def format_verbose_tap_result(is_valid: bool, duration: float, timeout: float, keys: set) -> str:
+    """Format a verbose tap validation result.
+
+    Args:
+        is_valid: Whether the tap was valid
+        duration: Duration of the tap in seconds
+        timeout: Timeout threshold in seconds
+        keys: Set of keys that were pressed
+
+    Returns:
+        str: Formatted validation result message
+    """
+    from .key_normalizer import format_keys_display
+    
+    keys_str = format_keys_display(keys)
+    
+    if is_valid:
+        return f'[DEBUG] ✓ Valid tap: {keys_str} (duration: {duration:.3f}s ≤ {timeout:.3f}s)'
+    else:
+        return f'[DEBUG] ✗ Invalid tap: {keys_str} (duration: {duration:.3f}s > {timeout:.3f}s)'
 
 
 def format_verbose_waiting() -> str:
@@ -158,4 +129,3 @@ def format_verbose_waiting() -> str:
         str: Formatted waiting message
     """
     return '\n[DEBUG] Waiting for key events...'
-
