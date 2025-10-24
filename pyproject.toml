@@ -22,8 +22,8 @@ wayland = [
 requires = ["hatchling"]
 build-backend = "hatchling.build"
 
-[tool.uv]
-dev-dependencies = [
+[dependency-groups]
+dev = [
     "types-psutil>=7.0.0.20251001",
     "types-pynput>=1.8.1.20250809",
     "mypy",
