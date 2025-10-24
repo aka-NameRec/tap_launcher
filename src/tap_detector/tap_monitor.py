@@ -1,6 +1,7 @@
 """Tap monitoring and detection logic.
 
-This module implements the core tap detection logic using pynput keyboard listener.
+This module implements the core tap detection logic using keyboard backend abstraction.
+Supports both X11 (via pynput) and Wayland (via evdev) through the backend system.
 """
 
 from collections.abc import Callable
@@ -9,13 +10,13 @@ from dataclasses import field
 from time import perf_counter
 from typing import Any
 
-from pynput import keyboard
+from common.backends import KeyboardBackend, create_backend
+from common.key_normalizer import normalize_key
 
 from .formatter import format_verbose_press
 from .formatter import format_verbose_release
 from .formatter import format_verbose_tap_result
 from .formatter import format_verbose_waiting
-from .key_normalizer import normalize_key
 
 
 @dataclass
@@ -67,6 +68,7 @@ class TapMonitor:
         on_keys_detected: Callable[[set[Any], float], None] | None = None,
         on_tap_invalid: Callable[[str, set[Any], float], None] | None = None,
         check_timer_delay: Callable[[str], bool] | None = None,
+        backend: KeyboardBackend | None = None,
     ) -> None:
         self.timeout = timeout
         self.validate_timeout = timeout is not None
@@ -75,20 +77,20 @@ class TapMonitor:
         self.on_keys_detected = on_keys_detected
         self.on_tap_invalid = on_tap_invalid
         self.check_timer_delay = check_timer_delay
-        self.listener: keyboard.Listener | None = None  # Will be set when start() is called
+        
+        # Create or use provided backend (auto-detects X11 vs Wayland)
+        self.backend = backend or create_backend()
 
     def start(self) -> None:
         """Start monitoring keyboard events.
 
         This method blocks and listens for keyboard events until interrupted.
+        Uses the configured backend (pynput for X11, evdev for Wayland).
         """
-        self.listener = keyboard.Listener(
+        self.backend.start(
             on_press=self._on_press,
-            on_release=self._on_release,
-            suppress=False  # Do NOT suppress events for other applications
+            on_release=self._on_release
         )
-        self.listener.start()
-        self.listener.join()
 
     def stop(self) -> None:
         """Stop monitoring keyboard events.
@@ -96,8 +98,7 @@ class TapMonitor:
         This method stops the keyboard listener, allowing the monitoring
         loop to exit cleanly.
         """
-        if self.listener:
-            self.listener.stop()
+        self.backend.stop()
 
     def _on_press(self, key: Any) -> None:
         """Handle key press event.

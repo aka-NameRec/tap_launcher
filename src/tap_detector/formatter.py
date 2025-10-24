@@ -5,8 +5,8 @@ including TOML configuration fragments.
 """
 
 from .constants import __version__
-from .key_normalizer import format_keys_display
-from .key_normalizer import format_keys_toml
+from common.key_normalizer import format_keys_display
+from common.key_normalizer import format_keys_toml
 
 
 def format_header() -> str:
@@ -112,8 +112,7 @@ def format_verbose_tap_result(is_valid: bool, duration: float, timeout: float, k
     Returns:
         str: Formatted validation result message
     """
-    from .key_normalizer import format_keys_display
-    
+    # format_keys_display already imported at module level
     keys_str = format_keys_display(keys)
     
     if is_valid:

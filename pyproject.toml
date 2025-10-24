@@ -13,6 +13,11 @@ dependencies = [
 tap-detector = "tap_detector.main:app"
 tap-launcher = "tap_launcher.main:app"
 
+[project.optional-dependencies]
+wayland = [
+    "evdev>=1.9.2",
+]
+
 [build-system]
 requires = ["hatchling"]
 build-backend = "hatchling.build"
@@ -60,4 +65,4 @@ force-single-line = true
 quote-style = "single"
 
 [tool.hatch.build.targets.wheel]
-packages = ["src/tap_detector", "src/tap_launcher"]
+packages = ["src/common", "src/tap_detector", "src/tap_launcher"]

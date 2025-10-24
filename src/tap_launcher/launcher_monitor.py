@@ -6,7 +6,7 @@ This module integrates tap detection with command execution.
 import logging
 from typing import Any
 
-from tap_detector.key_normalizer import format_keys_display
+from common.key_normalizer import format_keys_display
 from tap_detector.tap_monitor import TapMonitor
 
 from .command_executor import CommandExecutor

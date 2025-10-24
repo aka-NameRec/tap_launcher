@@ -6,7 +6,7 @@ configured hotkey combinations.
 
 from typing import Any
 
-from tap_detector.key_normalizer import normalize_key
+from common.key_normalizer import normalize_key
 
 from .models import HotkeyConfig
 
