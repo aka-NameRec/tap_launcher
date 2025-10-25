@@ -12,11 +12,10 @@ from typing import Any
 
 from common.backends import KeyboardBackend, create_backend
 from common.key_normalizer import normalize_key
-
-from .formatter import format_verbose_press
-from .formatter import format_verbose_release
-from .formatter import format_verbose_tap_result
-from .formatter import format_verbose_waiting
+from tap_detector.formatter import format_verbose_press
+from tap_detector.formatter import format_verbose_release
+from tap_detector.formatter import format_verbose_tap_result
+from tap_detector.formatter import format_verbose_waiting
 
 
 @dataclass
@@ -52,6 +51,13 @@ class TapMonitor:
     1. Validation mode (timeout provided): Validates taps against timeout
     2. Display mode (no timeout): Shows all key combinations without validation
 
+    Tap Semantics (important):
+    - A tap completes when the FIRST key is released (not when all keys are released)
+    - "Simultaneous" means all keys were pressed before any key was released
+    - Duration is measured from first press to first release
+    - This provides more natural behavior and solves stuck key issues with
+      system shortcuts (e.g., layout switching with Shift+CapsLock in KDE)
+
     Args:
         timeout: Maximum duration in seconds for a valid tap (None = no validation)
         verbose: Whether to output verbose debug information
@@ -59,6 +65,7 @@ class TapMonitor:
         on_tap_invalid: Callback when an invalid tap is detected (reason, keys, duration)
         check_timer_delay: Optional callback to check if timer should be delayed for a key.
             Takes normalized key name (str), returns True to delay timer start.
+        backend: Optional keyboard backend to use (auto-detects X11/Wayland if None)
     """
 
     def __init__(
@@ -189,6 +196,10 @@ class TapMonitor:
         Args:
             key: The pynput Key or KeyCode that was released
         """
+        # NEW SEMANTIC: Check if this is a release during an active tap
+        # Tap completes on FIRST key release, not when all keys are released
+        should_process_tap = (key in self.state.pressed_keys and self.state.is_active)
+        
         # Remove from pressed keys
         if key in self.state.pressed_keys:
             self.state.pressed_keys.remove(key)
@@ -198,8 +209,9 @@ class TapMonitor:
                 all_released = len(self.state.pressed_keys) == 0
                 print(format_verbose_release(normalize_key(key), elapsed, all_released))  # noqa: T201
 
-        # If all keys are released, process the combination
-        if not self.state.pressed_keys and self.state.is_active:
+        # Process the combination on FIRST key release (not when all keys are released)
+        # This solves "stuck keys" problem and provides more natural tap semantics
+        if should_process_tap:
             # If timer was never started (only one key pressed with delayed timer)
             if self.validate_timeout and self.state.start_time is None:
                 if self.verbose:

@@ -7,7 +7,7 @@ import logging
 from typing import Any
 
 from common.key_normalizer import format_keys_display
-from tap_detector.tap_monitor import TapMonitor
+from common.tap_monitor import TapMonitor
 
 from .command_executor import CommandExecutor
 from .hotkey_matcher import HotkeyMatcher

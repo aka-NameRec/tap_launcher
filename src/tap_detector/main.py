@@ -5,10 +5,11 @@ from typing import Any
 
 import typer
 
+from common.tap_monitor import TapMonitor
+
 from .formatter import format_header
 from .formatter import format_keys_detected
 from .formatter import format_verbose_header
-from .tap_monitor import TapMonitor
 
 app = typer.Typer(help='🎹 Tap Detector - Detect keyboard key combinations')
 
