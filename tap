@@ -1,0 +1,35 @@
+#!/bin/bash
+# tap - Wrapper script for tap-launcher and tap-detector
+# Automatically determines project path and runs with uv
+
+set -euo pipefail
+
+# Get the directory where this script is located
+# This handles both direct execution and execution via symlink
+SCRIPT_PATH="${BASH_SOURCE[0]}"
+
+# If the script is a symlink, resolve it to get the real path
+if [[ -L "$SCRIPT_PATH" ]]; then
+    SCRIPT_PATH="$(readlink -f "$SCRIPT_PATH")"
+fi
+
+SCRIPT_DIR="$(cd "$(dirname "$SCRIPT_PATH")" && pwd)"
+
+# Project root is the directory containing this script
+PROJECT_ROOT="$SCRIPT_DIR"
+
+# Check if uv is available
+if ! command -v uv >/dev/null 2>&1; then
+    echo "❌ Error: uv is not installed or not in PATH" >&2
+    echo "   Please install uv: https://docs.astral.sh/uv/getting-started/installation/" >&2
+    exit 1
+fi
+
+# Check if pyproject.toml exists in project root
+if [[ ! -f "$PROJECT_ROOT/pyproject.toml" ]]; then
+    echo "❌ Error: pyproject.toml not found in project root: $PROJECT_ROOT" >&2
+    exit 1
+fi
+
+# Run uv with the project path and pass all arguments
+exec uv run --project "$PROJECT_ROOT" "$@"

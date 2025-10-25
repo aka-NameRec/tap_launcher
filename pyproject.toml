@@ -10,8 +10,8 @@ dependencies = [
 ]
 
 [project.scripts]
-tap-detector = "tap_detector.main:app"
-tap-launcher = "tap_launcher.main:app"
+detect = "tap_detector.main:app"
+launch = "tap_launcher.main:app"
 
 [project.optional-dependencies]
 wayland = [
