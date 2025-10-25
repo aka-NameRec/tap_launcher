@@ -140,6 +140,33 @@ args = ["ru"]
 description = "Switch to Russian layout"
 ```
 
+### Configuration Format
+
+Each hotkey entry consists of:
+
+- **`keys`** - Array of key names that must be pressed together (see [Key Mapping](docs/key-mapping.md))
+- **`command`** - Executable name (must be in PATH or absolute path)
+- **`args`** - Array of command arguments (each argument as a separate string)
+- **`description`** - Optional human-readable description
+
+**Important:** The `command` field should contain **only the executable name**, not the full command line. Arguments must be in the `args` array.
+
+**Correct:**
+```toml
+[[hotkeys]]
+keys = ["ctrl_r", "/"]
+command = "xdotool"
+args = ["key", "Menu"]
+```
+
+**Incorrect:**
+```toml
+[[hotkeys]]
+keys = ["ctrl_r", "/"]
+command = "xdotool key Menu"  # ❌ Don't put arguments here
+args = []
+```
+
 ## Documentation
 
 - **[Usage Guide](docs/tap-launcher-usage.md)** - Complete usage documentation
@@ -324,6 +351,26 @@ keys = ["ctrl_l", "alt_l", "p"]
 command = "playerctl"
 args = ["play-pause"]
 description = "Play/pause media"
+```
+
+### Key Emulation
+
+```toml
+[[hotkeys]]
+keys = ["ctrl_r", "/"]
+command = "xdotool"
+args = ["key", "Menu"]
+description = "Emulate Menu key press"
+```
+
+### Volume Control
+
+```toml
+[[hotkeys]]
+keys = ["ctrl_l", "alt_l", "up"]
+command = "pactl"
+args = ["set-sink-volume", "@DEFAULT_SINK@", "+5%"]
+description = "Increase volume by 5%"
 ```
 
 ## Performance
