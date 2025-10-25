@@ -28,13 +28,24 @@ A "tap" is a brief press of a key combination. The application monitors keyboard
    uv sync
    ```
 
-2. **Discover key combinations:**
+2. **Set up the `tap` wrapper script (optional but recommended):**
 
    ```bash
-   tap-detector
+   # Create a symlink in your PATH
+   ln -s $(pwd)/tap ~/.local/bin/tap
+   
+   # Or use directly from project directory
+   ./tap
    ```
 
-3. **Configure and start:**
+3. **Discover key combinations:**
+
+   ```bash
+   tap detect
+   # Or without wrapper: uv run detect
+   ```
+
+4. **Configure and start:**
 
    ```bash
    # Copy example config
@@ -45,46 +56,67 @@ A "tap" is a brief press of a key combination. The application monitors keyboard
    nano ~/.config/tap-launcher/config.toml
    
    # Start the launcher
-   tap-launcher start
+   tap launch start
+   # Or without wrapper: uv run launch start
    ```
 
 ## Components
 
-### tap-detector
+### Tap Wrapper Script
+
+The `tap` wrapper script simplifies command execution by automatically detecting the project path and handling symlinks. This eliminates the need to type the full `uv run --project /path/to/project` command.
+
+**Setup:**
+
+```bash
+# Create a symlink in your PATH for system-wide access
+ln -s /path/to/tap_launcher/tap ~/.local/bin/tap
+
+# Verify it works
+tap launch status
+```
+
+The script:
+- Automatically detects project path even when called via symlink
+- Validates `uv` availability
+- Passes all arguments to `uv run`
+
+### tap-detector (now `detect`)
 
 Interactive utility for discovering key combinations. Displays detected keys in real-time and provides ready-to-use TOML configuration fragments.
 
 **Usage:**
 
 ```bash
-# Basic usage
-tap-detector
+# With tap wrapper (recommended)
+tap detect
+tap detect --verbose
 
-# Verbose output
-tap-detector --verbose
+# Without wrapper
+uv run detect
+uv run detect --verbose
 ```
 
-### tap-launcher
+### tap-launcher (now `launch`)
 
 Background daemon that monitors for configured taps and executes commands.
 
 **Usage:**
 
 ```bash
-# Start daemon
-tap-launcher start
+# With tap wrapper (recommended)
+tap launch start
+tap launch status
+tap launch stop
+tap launch restart
+tap launch check-config
 
-# Check status
-tap-launcher status
-
-# Stop daemon
-tap-launcher stop
-
-# Restart (useful after config changes)
-tap-launcher restart
-
-# Validate configuration
-tap-launcher check-config
+# Without wrapper
+uv run launch start
+uv run launch status
+uv run launch stop
+uv run launch restart
+uv run launch check-config
 ```
 
 ## Configuration
@@ -299,6 +331,66 @@ description = "Play/pause media"
 - **Memory**: ~15-30 MB RSS
 - **CPU**: < 0.1% when idle
 - **Latency**: < 10ms from tap to command execution
+
+## Using the `tap` Wrapper Script
+
+The project includes a convenient `tap` wrapper script that simplifies command execution:
+
+### Benefits
+
+- **Shorter commands**: `tap launch start` instead of `uv run --project /path/to/project launch start`
+- **Works from anywhere**: No need to be in the project directory
+- **Handles symlinks**: Automatically resolves the real project path
+- **Validates environment**: Checks for `uv` and `pyproject.toml`
+
+### Installation
+
+**Option 1: Symlink to PATH (recommended)**
+
+```bash
+# Create symlink in a directory that's in your PATH
+ln -s /path/to/tap_launcher/tap ~/.local/bin/tap
+
+# Verify
+which tap
+tap launch status
+```
+
+**Option 2: Direct execution from project**
+
+```bash
+cd /path/to/tap_launcher
+./tap launch start
+```
+
+### Usage Examples
+
+```bash
+# Start the launcher
+tap launch start
+
+# Check status
+tap launch status
+
+# Detect key combinations
+tap detect --verbose
+
+# Stop the launcher
+tap launch stop
+```
+
+### Fallback: Direct uv Commands
+
+If you prefer not to use the wrapper script, you can always use `uv` directly:
+
+```bash
+# From project directory
+uv run launch start
+uv run detect
+
+# From anywhere with --project flag
+uv run --project /path/to/tap_launcher launch start
+```
 
 ## Security
 
