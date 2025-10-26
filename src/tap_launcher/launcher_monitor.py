@@ -44,6 +44,10 @@ class LauncherMonitor:
         # Track emulated events to prevent re-processing
         # Format: {(key, is_press): count}
         self._emulated_events: dict[tuple[Any, bool], int] = {}
+        
+        # Track which keys had their press emitted (for release logic)
+        # This survives decrement operations
+        self._press_was_emitted: set[Any] = set()
 
         # Create TapMonitor from tap_detector with validation
         self.tap_monitor = TapMonitor(
@@ -134,13 +138,18 @@ class LauncherMonitor:
             press_key = (key, True)
             press_was_emitted = press_key in self._emulated_events and self._emulated_events[press_key] > 0
             
-            if not press_was_emitted:
+            # Check if press was EVER emitted (not just currently in counter)
+            press_was_ever_emitted = key in self._press_was_emitted
+            
+            if not press_was_ever_emitted:
                 # We didn't emit the press, don't emit release
-                self.logger.debug(f'Not emitting release for {key} - press was not emitted')
+                self.logger.debug(f'Not emitting release for {key} - press was never emitted')
             else:
                 # We DID emit press, so emit release too
                 self.logger.debug(f'Emitting release: {key}')
                 self._emit_key(key, is_press=False)
+                # Remove from set after release
+                self._press_was_emitted.discard(key)
             
             # Process in TapMonitor (state management)
             original_on_release(key)
@@ -198,6 +207,10 @@ class LauncherMonitor:
         if event_key not in self._emulated_events:
             self._emulated_events[event_key] = 0
         self._emulated_events[event_key] += 1
+        
+        # Track if this was a press event
+        if is_press:
+            self._press_was_emitted.add(key)
         
         self.logger.debug(f'_emit_key: {key}, is_press={is_press}, counter now={self._emulated_events[event_key]}')
         
