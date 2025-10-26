@@ -133,6 +133,26 @@ def format_keys_display(keys: set[Any]) -> str:
     return '+'.join(sorted(normalized))
 
 
+def is_modifier_key(key: Any) -> bool:
+    """Check if a key is a modifier key.
+
+    Modifier keys are: Ctrl, Shift, Alt, AltGr, Super/Win/Cmd
+    
+    Args:
+        key: A pynput Key or KeyCode object
+
+    Returns:
+        bool: True if the key is a modifier, False otherwise
+    """
+    modifiers = {
+        Key.ctrl_l, Key.ctrl_r,
+        Key.shift_l, Key.shift_r,
+        Key.alt_l, Key.alt_r, Key.alt_gr,
+        Key.cmd, Key.cmd_l, Key.cmd_r,  # Super/Win
+    }
+    return key in modifiers
+
+
 def format_keys_toml(keys: set[Any]) -> list[str]:
     """Format keys for TOML config with proper sorting.
 

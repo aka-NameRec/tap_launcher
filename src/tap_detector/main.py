@@ -38,7 +38,12 @@ def main(
     """
 
     # Define callback for key detection
-    def on_keys_detected(keys: set[Any], duration: float) -> None:
+    def on_keys_detected(
+        keys: set[Any],
+        duration: float,
+        trigger_key: Any,
+        has_non_modifier: bool
+    ) -> None:
         """Called when keys are detected."""
         sys.stdout.write(format_keys_detected(keys, duration))
 
