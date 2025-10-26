@@ -83,13 +83,17 @@ class LauncherMonitor:
             """Wrapper for on_press with emulation checking."""
             event_key = (key, True)  # (key, is_press)
             
+            self.logger.debug(f'[WRAPPER] on_press: {key}, event_key={event_key}, counter={self._emulated_events.get(event_key, 0)}')
+            
             # Check if this is our own emulated event
             if event_key in self._emulated_events and self._emulated_events[event_key] > 0:
                 self._emulated_events[event_key] -= 1
+                self.logger.debug(f'[WRAPPER] Decremented counter for {key}, counter now={self._emulated_events[event_key]}')
                 if self._emulated_events[event_key] == 0:
                     del self._emulated_events[event_key]
+                    self.logger.debug(f'[WRAPPER] Removed counter for {key}')
                 # Skip - this is our own emulation
-                self.logger.debug(f'Skipping emulated press: {key}, counter now={self._emulated_events.get(event_key, 0)}')
+                self.logger.debug(f'[WRAPPER] Skipping emulated press: {key}')
                 return
             
             # Smart emulation logic:
@@ -99,13 +103,15 @@ class LauncherMonitor:
             from common.key_normalizer import is_modifier_key
             if is_modifier_key(key):
                 # Modifier - always safe to emit
+                self.logger.debug(f'[WRAPPER] Emitting modifier: {key}')
                 self._emit_key(key, is_press=True)
             elif not self.tap_monitor.state.is_active:
                 # Non-modifier with no active tap - emit (normal typing)
+                self.logger.debug(f'[WRAPPER] Emitting non-modifier (no active tap): {key}')
                 self._emit_key(key, is_press=True)
             else:
                 # Non-modifier with active tap - DON'T emit yet, wait for callback decision
-                self.logger.debug(f'Delaying emulation for {key} - active tap in progress')
+                self.logger.debug(f'[WRAPPER] Delaying emulation for {key} - active tap in progress')
             
             # Process in TapMonitor
             original_on_press(key)
@@ -181,6 +187,12 @@ class LauncherMonitor:
             is_press: True for press, False for release
         """
         event_key = (key, is_press)
+        
+        # IMPORTANT: Check if this event is ALREADY in the counter
+        # This prevents infinite recursion
+        if event_key in self._emulated_events and self._emulated_events[event_key] > 0:
+            self.logger.debug(f'_emit_key: ALREADY emulated {key}, is_press={is_press}, skipping')
+            return
         
         # Increment counter BEFORE emulation
         if event_key not in self._emulated_events:
