@@ -89,7 +89,7 @@ class LauncherMonitor:
                 if self._emulated_events[event_key] == 0:
                     del self._emulated_events[event_key]
                 # Skip - this is our own emulation
-                self.logger.debug(f'Skipping emulated press: {key}')
+                self.logger.debug(f'Skipping emulated press: {key}, counter now={self._emulated_events.get(event_key, 0)}')
                 return
             
             # Smart emulation logic:
