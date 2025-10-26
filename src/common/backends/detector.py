@@ -85,25 +85,23 @@ def create_backend(
         # With custom device path
         backend = create_backend('evdev', device_path='/dev/input/event3')
     """
-    # TEMPORARY: Force evdev for proof-of-concept
-    # TODO: Remove this after testing
+    # Auto-detect if not specified
     if backend_name is None or backend_name == 'auto':
-        backend_name = 'evdev'
-        logger.debug('POC: Forcing evdev backend for event suppression testing')
-    # Original auto-detect logic (commented for POC):
-    # session_type = detect_session_type()
-    # if session_type == 'wayland':
-    #     backend_name = 'evdev'
-    #     logger.debug('Session is Wayland, selecting evdev backend')
-    # elif session_type == 'x11':
-    #     backend_name = 'pynput'
-    #     logger.debug('Session is X11, selecting pynput backend')
-    # else:
-    #     logger.warning(
-    #         'Unknown session type, trying pynput backend first '
-    #         '(will fallback to evdev if needed)'
-    #     )
-    #     backend_name = 'pynput'
+        session_type = detect_session_type()
+        
+        if session_type == 'wayland':
+            backend_name = 'evdev'
+            logger.debug('Session is Wayland, selecting evdev backend')
+        elif session_type == 'x11':
+            backend_name = 'pynput'
+            logger.debug('Session is X11, selecting pynput backend')
+        else:
+            # Unknown session - try pynput first (most compatible)
+            logger.warning(
+                'Unknown session type, trying pynput backend first '
+                '(will fallback to evdev if needed)'
+            )
+            backend_name = 'pynput'
     
     # Try to create the specified backend
     if backend_name == 'pynput':
