@@ -167,6 +167,8 @@ class LauncherMonitor:
             self._emulated_events[event_key] = 0
         self._emulated_events[event_key] += 1
         
+        self.logger.debug(f'_emit_key: {key}, is_press={is_press}, counter now={self._emulated_events[event_key]}')
+        
         # Emit the event
         backend = self.tap_monitor.backend
         if hasattr(backend, 'emit_key_event'):
@@ -180,6 +182,7 @@ class LauncherMonitor:
                     controller.press(key)
                 else:
                     controller.release(key)
+                self.logger.debug(f'_emit_key: actually emitted via pynput Controller')
             except Exception as e:
                 self.logger.error(f'Failed to emit key event: {e}')
 
