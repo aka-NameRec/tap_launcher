@@ -108,6 +108,7 @@ class LauncherMonitor:
         
         def on_release_wrapper(key: Any) -> None:
             """Wrapper for on_release with emulation checking."""
+            self.logger.debug(f'[RELEASE] on_release_wrapper called for {key}')
             event_key = (key, False)  # (key, is_press)
             
             # Check if this is our own emulated event
