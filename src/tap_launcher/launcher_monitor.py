@@ -120,10 +120,19 @@ class LauncherMonitor:
                 # Skip - this is our own emulation
                 return
             
-            # Always emit releases to prevent stuck keys
-            self._emit_key(key, is_press=False)
+            # Check if we emitted the corresponding press
+            # If we didn't emit press, don't emit release either
+            press_key = (key, True)
+            press_was_emitted = press_key in self._emulated_events and self._emulated_events[press_key] > 0
             
-            # Process in TapMonitor
+            if not press_was_emitted:
+                # We didn't emit the press, don't emit release
+                self.logger.debug(f'Not emitting release for {key} - press was not emitted')
+            else:
+                # We DID emit press, so emit release too
+                self._emit_key(key, is_press=False)
+            
+            # Process in TapMonitor (state management)
             original_on_release(key)
 
         # Start the tap monitor with wrappers (this blocks)
