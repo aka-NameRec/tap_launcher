@@ -89,10 +89,11 @@ class LauncherMonitor:
                 if self._emulated_events[event_key] == 0:
                     del self._emulated_events[event_key]
                 # Skip - this is our own emulation
+                self.logger.debug(f'Skipping emulated press: {key}')
                 return
             
-            # TEMPORARY: Emit ALL keys to test if emulation works at all
-            # TODO: Restore smart logic after debugging
+            # Emit ALL keys to test
+            self.logger.debug(f'Emitting press: {key}')
             self._emit_key(key, is_press=True)
             
             # Process in TapMonitor
@@ -108,19 +109,12 @@ class LauncherMonitor:
                 if self._emulated_events[event_key] == 0:
                     del self._emulated_events[event_key]
                 # Skip - this is our own emulation
+                self.logger.debug(f'Skipping emulated release: {key}')
                 return
             
-            # Check if we emitted the corresponding press
-            # If we didn't emit press, don't emit release either
-            press_key = (key, True)
-            press_was_emitted = press_key in self._emulated_events and self._emulated_events[press_key] > 0
-            
-            if not press_was_emitted:
-                # We didn't emit the press, don't emit release
-                self.logger.debug(f'Not emitting release for {key} - press was not emitted')
-            else:
-                # We DID emit press, so emit release too
-                self._emit_key(key, is_press=False)
+            # Emit ALL releases to test
+            self.logger.debug(f'Emitting release: {key}')
+            self._emit_key(key, is_press=False)
             
             # Process in TapMonitor (state management)
             original_on_release(key)
