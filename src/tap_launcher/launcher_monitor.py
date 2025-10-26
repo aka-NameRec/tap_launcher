@@ -147,7 +147,15 @@ class LauncherMonitor:
             else:
                 # We DID emit press, so emit release too
                 self.logger.debug(f'Emitting release: {key}')
-                self._emit_key(key, is_press=False)
+                # Emit release directly without counter tracking
+                # (we'll handle it when it comes back)
+                try:
+                    from pynput.keyboard import Controller
+                    controller = Controller()
+                    controller.release(key)
+                    self.logger.debug(f'Directly emitted release for {key}')
+                except Exception as e:
+                    self.logger.error(f'Failed to emit release: {e}')
                 # Remove from set after release
                 self._press_was_emitted.discard(key)
             
