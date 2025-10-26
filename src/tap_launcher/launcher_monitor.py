@@ -51,6 +51,9 @@ class LauncherMonitor:
         
         # Thread-local flag to prevent infinite recursion in release
         self._releasing_keys: set[Any] = set()
+        
+        # Track trigger keys to suppress their release
+        self._suppressed_trigger_keys: set[Any] = set()
 
         # Create TapMonitor from tap_detector with validation
         self.tap_monitor = TapMonitor(
@@ -132,6 +135,12 @@ class LauncherMonitor:
             #     # Skip - this is our own emulation
             #     self.logger.debug(f'Skipping emulated release: {key}')
             #     return
+            
+            # Check if this trigger key should be suppressed
+            if key in self._suppressed_trigger_keys:
+                self.logger.debug(f'[RELEASE] Suppressing release for {key} (matched hotkey)')
+                self._suppressed_trigger_keys.discard(key)  # Remove after first use
+                return  # Don't emit release
             
             # Check if we emitted the corresponding press
             # If we didn't emit press, don't emit release either (prevent mismatch)
@@ -283,6 +292,10 @@ class LauncherMonitor:
             # (Don't re-emit the non-modifier)
             if self.config.debug_mode:
                 self.logger.debug(f'Hotkey matched - trigger key suppressed')
+            
+            # Mark trigger key to suppress its release
+            if trigger_key:
+                self._suppressed_trigger_keys.add(trigger_key)
 
         else:
             # No matching hotkey - re-emit trigger key
