@@ -92,9 +92,18 @@ class LauncherMonitor:
                 self.logger.debug(f'Skipping emulated press: {key}')
                 return
             
-            # Emit ALL keys to test
-            self.logger.debug(f'Emitting press: {key}')
-            self._emit_key(key, is_press=True)
+            # Smart emulation logic:
+            # - Modifiers: emit immediately (always safe)
+            # - Non-modifiers WITHOUT active tap: emit immediately (normal typing)
+            # - Non-modifiers WITH active tap: DON'T emit yet, callback will decide
+            from common.key_normalizer import is_modifier_key
+            if is_modifier_key(key):
+                # Modifier - always safe to emit
+                self._emit_key(key, is_press=True)
+            elif not self.tap_monitor.state.is_active:
+                # Non-modifier with no active tap - emit (normal typing)
+                self._emit_key(key, is_press=True)
+            # Non-modifier with active tap - DON'T emit yet, wait for callback decision
             
             # Process in TapMonitor
             original_on_press(key)
@@ -112,9 +121,18 @@ class LauncherMonitor:
                 self.logger.debug(f'Skipping emulated release: {key}')
                 return
             
-            # Emit ALL releases to test
-            self.logger.debug(f'Emitting release: {key}')
-            self._emit_key(key, is_press=False)
+            # Check if we emitted the corresponding press
+            # If we didn't emit press, don't emit release either (prevent mismatch)
+            press_key = (key, True)
+            press_was_emitted = press_key in self._emulated_events and self._emulated_events[press_key] > 0
+            
+            if not press_was_emitted:
+                # We didn't emit the press, don't emit release
+                self.logger.debug(f'Not emitting release for {key} - press was not emitted')
+            else:
+                # We DID emit press, so emit release too
+                self.logger.debug(f'Emitting release: {key}')
+                self._emit_key(key, is_press=False)
             
             # Process in TapMonitor (state management)
             original_on_release(key)
