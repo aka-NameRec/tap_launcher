@@ -48,6 +48,9 @@ class LauncherMonitor:
         # Track which keys had their press emitted (for release logic)
         # This survives decrement operations
         self._press_was_emitted: set[Any] = set()
+        
+        # Thread-local flag to prevent infinite recursion in release
+        self._releasing_keys: set[Any] = set()
 
         # Create TapMonitor from tap_detector with validation
         self.tap_monitor = TapMonitor(
@@ -110,8 +113,16 @@ class LauncherMonitor:
             """Wrapper for on_release with emulation checking."""
             self.logger.debug(f'[RELEASE] on_release_wrapper called for {key}')
             print(f'[DEBUG] on_release_wrapper called for {key}')
-            event_key = (key, False)  # (key, is_press)
-            self.logger.debug(f'[RELEASE] event_key created: {event_key}')
+            
+            # Check if we're already processing this key
+            if key in self._releasing_keys:
+                self.logger.debug(f'[RELEASE] Already releasing {key}, skipping')
+                return
+            
+            self._releasing_keys.add(key)
+            try:
+                event_key = (key, False)  # (key, is_press)
+                self.logger.debug(f'[RELEASE] event_key created: {event_key}')
             
             # TODO: Check if this is our own emulated event
             # Disabled to debug
@@ -146,6 +157,8 @@ class LauncherMonitor:
                 self.logger.error(f'[RELEASE] Error in original_on_release: {e}')
                 import traceback
                 self.logger.error(traceback.format_exc())
+            finally:
+                self._releasing_keys.discard(key)
 
         # Start the tap monitor with wrappers (this blocks)
         try:
