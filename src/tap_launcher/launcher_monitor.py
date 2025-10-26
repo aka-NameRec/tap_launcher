@@ -94,7 +94,8 @@ class LauncherMonitor:
             # Smart emulation logic:
             # - Modifiers: emit immediately (safe, always pass-through)
             # - Non-modifiers WITHOUT active tap: emit immediately (normal typing)
-            # - Non-modifiers WITH active tap: delay until decision in callback
+            # - Non-modifiers WITH active tap: DON'T emit yet, callback will decide
+            
             from common.key_normalizer import is_modifier_key
             if is_modifier_key(key):
                 # Modifier - always safe to emit
