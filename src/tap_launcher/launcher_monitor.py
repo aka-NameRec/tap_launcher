@@ -136,9 +136,14 @@ class LauncherMonitor:
                 self.logger.error(f'Failed to emit release: {e}')
             
             # Process in TapMonitor (state management)
-            self.logger.debug(f'[RELEASE] Calling original_on_release for {key}')
-            original_on_release(key)
-            self.logger.debug(f'[RELEASE] Done with original_on_release for {key}')
+            self.logger.debug(f'[RELEASE] Ready to call original_on_release for {key}')
+            try:
+                original_on_release(key)
+                self.logger.debug(f'[RELEASE] Done with original_on_release for {key}')
+            except Exception as e:
+                self.logger.error(f'[RELEASE] Error in original_on_release: {e}')
+                import traceback
+                self.logger.error(traceback.format_exc())
 
         # Start the tap monitor with wrappers (this blocks)
         try:
