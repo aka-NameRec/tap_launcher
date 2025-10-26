@@ -100,22 +100,8 @@ class LauncherMonitor:
                 self.logger.debug(f'[WRAPPER] Skipping emulated press: {key}')
                 return
             
-            # Smart emulation logic:
-            # - Modifiers: emit immediately (always safe)
-            # - Non-modifiers WITHOUT active tap: emit immediately (normal typing)
-            # - Non-modifiers WITH active tap: DON'T emit yet, callback will decide
-            from common.key_normalizer import is_modifier_key
-            if is_modifier_key(key):
-                # Modifier - always safe to emit
-                self.logger.debug(f'[WRAPPER] Emitting modifier: {key}')
-                self._emit_key(key, is_press=True)
-            elif not self.tap_monitor.state.is_active:
-                # Non-modifier with no active tap - emit (normal typing)
-                self.logger.debug(f'[WRAPPER] Emitting non-modifier (no active tap): {key}')
-                self._emit_key(key, is_press=True)
-            else:
-                # Non-modifier with active tap - DON'T emit yet, wait for callback decision
-                self.logger.debug(f'[WRAPPER] Delaying emulation for {key} - active tap in progress')
+            # SIMPLIFIED: Always emit press
+            self._emit_key(key, is_press=True)
             
             # Process in TapMonitor
             original_on_press(key)
