@@ -106,7 +106,11 @@ class LauncherMonitor:
                 self.logger.debug(f'[WRAPPER] Skipping emulated press: {key}')
                 return
             
-            # SIMPLIFIED: Always emit press
+            # Check if this key should be suppressed (matched hotkey trigger)
+            # But only check AFTER we get callback from tap_detector
+            # So we always emit press for now, but suppress release later
+            
+            # Always emit press (suppress will happen at release time)
             self._emit_key(key, is_press=True)
             
             # Process in TapMonitor
