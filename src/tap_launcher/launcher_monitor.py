@@ -41,6 +41,10 @@ class LauncherMonitor:
         self.executor = executor
         self.logger = logging.getLogger('tap_launcher.monitor')
 
+        # Track emulated events to prevent re-processing
+        # Format: {(key, is_press): count}
+        self._emulated_events: dict[tuple[Any, bool], int] = {}
+
         # Create TapMonitor from tap_detector with validation
         self.tap_monitor = TapMonitor(
             timeout=config.tap_timeout,

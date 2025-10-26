@@ -42,6 +42,7 @@ class EvdevBackend:
         self.logger = logging.getLogger('common.backend.evdev')
         self.device_path = device_path
         self.device: Any = None  # Will be evdev.InputDevice
+        self.uinput_device: Any = None  # Will be evdev.UInput device
         self._stop_event = threading.Event()
         
         # Check if evdev is available
@@ -155,6 +156,28 @@ class EvdevBackend:
         self.logger.info(f'Starting evdev keyboard listener: {self.device.name}')
         self._stop_event.clear()
         
+        # Create uinput virtual device for event emulation
+        try:
+            import evdev
+            # Get capabilities from real device to replicate them
+            caps = self.device.capabilities()
+            
+            # Create uinput device with keyboard capabilities
+            self.uinput_device = evdev.UInput(
+                events={evdev.ecodes.EV_KEY: caps.get(evdev.ecodes.EV_KEY, [])},
+                name='tap-launcher-virtual-keyboard',
+                vendor=0x1,  # Generic vendor
+                product=0x1,  # Generic product
+            )
+            self.logger.info('Created uinput virtual keyboard device')
+        except Exception as e:
+            self.logger.error(f'Failed to create uinput device: {e}')
+            self.logger.error(
+                'Event emulation will not work. '
+                'Make sure user is in "input" group and has access to /dev/uinput'
+            )
+            # Continue without uinput - basic functionality will work
+        
         # Note: We don't call device.grab() to allow other applications
         # to receive keyboard events (same behavior as pynput)
         
@@ -220,6 +243,46 @@ class EvdevBackend:
             except Exception as e:  # noqa: BLE001
                 self.logger.debug(f'Error closing device in stop(): {e}')
             self.device = None
+        
+        # Close uinput device
+        if self.uinput_device:
+            try:
+                self.uinput_device.close()
+            except Exception as e:  # noqa: BLE001
+                self.logger.debug(f'Error closing uinput device: {e}')
+            self.uinput_device = None
+    
+    def emit_key_event(self, key: Any, is_press: bool) -> None:
+        """Emit a keyboard event using uinput.
+        
+        Args:
+            key: The key to emit (pynput Key or KeyCode object)
+            is_press: True for press, False for release
+        """
+        if not self.uinput_device:
+            self.logger.error('Cannot emit key event: uinput device not initialized')
+            return
+        
+        import evdev
+        from .key_mapping import pynput_to_evdev_code
+        
+        # Convert pynput key to evdev ecodes
+        try:
+            key_code = pynput_to_evdev_code(key)
+        except KeyError as e:
+            self.logger.error(f'Failed to convert key to evdev code: {e}')
+            return
+        
+        # Emit the event
+        try:
+            if is_press:
+                self.uinput_device.write(evdev.ecodes.EV_KEY, key_code, 1)  # 1 = press
+            else:
+                self.uinput_device.write(evdev.ecodes.EV_KEY, key_code, 0)  # 0 = release
+            
+            self.uinput_device.syn()  # Sync events
+        except Exception as e:
+            self.logger.error(f'Failed to emit key event via uinput: {e}')
     
     def get_backend_name(self) -> str:
         """Return backend name for logging."""

@@ -179,3 +179,53 @@ def evdev_to_pynput_key(keycode: str | list[str]) -> Any:
     # Unknown keycode - raise error for caller to handle
     raise KeyError(f'Unknown evdev keycode: {keycode}')
 
+
+# Reverse mapping: from pynput Key/KeyCode to evdev ecodes
+# Used for event emulation via uinput
+PYNPUT_TO_EVDEV_CODE: dict[Any, str] = {v: k for k, v in EVDEV_TO_PYNPUT_KEY.items() if not isinstance(v, KeyCode)}
+
+
+def pynput_to_evdev_code(key: Any) -> int:
+    """Convert pynput Key/KeyCode to evdev key code.
+    
+    Args:
+        key: pynput Key or KeyCode object
+        
+    Returns:
+        int: evdev key code (from evdev.ecodes)
+        
+    Raises:
+        KeyError: If key is not mapped
+        
+    Example:
+        >>> pynput_to_evdev_code(Key.ctrl_l)
+        29  # KEY_LEFTCTRL
+    """
+    from evdev import ecodes
+    
+    # For KeyCode with char
+    if isinstance(key, KeyCode) and key.char:
+        # Map character to evdev code
+        char_lower = key.char.lower()
+        if char_lower.isalpha():
+            # Convert 'a' -> KEY_A = 30, 'b' -> KEY_B = 48, etc.
+            offset = ord(char_lower) - ord('a')
+            return ecodes.KEY_A + offset
+        elif char_lower.isdigit():
+            # Convert '0' -> KEY_0 = 11, '1' -> KEY_1 = 2, etc.
+            if char_lower == '0':
+                return ecodes.KEY_0
+            else:
+                return ecodes.KEY_1 + int(char_lower) - 1
+    
+    # For special keys (Key objects), use reverse mapping
+    # Try to get from mapping first
+    try:
+        evdev_keyname = PYNPUT_TO_EVDEV_CODE[key]
+        # Get the actual code from ecodes
+        return getattr(ecodes, evdev_keyname)
+    except KeyError:
+        pass
+    
+    raise KeyError(f'Cannot convert pynput key to evdev code: {key}')
+
