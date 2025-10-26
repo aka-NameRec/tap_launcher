@@ -142,10 +142,13 @@ class LauncherMonitor:
             try:
                 from pynput.keyboard import Controller
                 controller = Controller()
+                print(f'[RELEASE] EMITTING release for {key}')
                 controller.release(key)
+                print(f'[RELEASE] EMITTED release for {key}')
                 self.logger.debug(f'[RELEASE] Actually emitted release for {key}')
             except Exception as e:
                 self.logger.error(f'Failed to emit release: {e}')
+                print(f'[RELEASE] ERROR: {e}')
             
             # Process in TapMonitor (state management)
             self.logger.debug(f'[RELEASE] Ready to call original_on_release for {key}')
