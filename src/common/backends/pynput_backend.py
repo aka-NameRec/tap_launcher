@@ -62,12 +62,12 @@ class PynputBackend:
         
         self.logger.info('Starting pynput keyboard listener (X11)')
         
-        # Create the listener with suppress=True to capture all events
-        # Application will selectively re-emit needed events
+        # Create the listener WITHOUT suppress
+        # We don't suppress - we just monitor and re-emit everything
         self.listener = keyboard.Listener(
             on_press=on_press,
             on_release=on_release,
-            suppress=True  # Capture all events for selective re-emission
+            suppress=False  # Don't suppress - let events through AND re-emit
         )
         
         # Start and block (same as existing code)
