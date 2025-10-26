@@ -124,26 +124,13 @@ class LauncherMonitor:
             press_key = (key, True)
             press_was_emitted = press_key in self._emulated_events and self._emulated_events[press_key] > 0
             
-            # Check if press was EVER emitted (not just currently in counter)
-            press_was_ever_emitted = key in self._press_was_emitted
-            
-            if not press_was_ever_emitted:
-                # We didn't emit the press, don't emit release
-                self.logger.debug(f'Not emitting release for {key} - press was never emitted')
-            else:
-                # We DID emit press, so emit release too
-                self.logger.debug(f'Emitting release: {key}')
-                # Emit release directly without counter tracking
-                # (we'll handle it when it comes back)
-                try:
-                    from pynput.keyboard import Controller
-                    controller = Controller()
-                    controller.release(key)
-                    self.logger.debug(f'Directly emitted release for {key}')
-                except Exception as e:
-                    self.logger.error(f'Failed to emit release: {e}')
-                # Remove from set after release
-                self._press_was_emitted.discard(key)
+            # SIMPLIFIED: Always emit release
+            try:
+                from pynput.keyboard import Controller
+                controller = Controller()
+                controller.release(key)
+            except Exception as e:
+                self.logger.error(f'Failed to emit release: {e}')
             
             # Process in TapMonitor (state management)
             original_on_release(key)
