@@ -91,19 +91,9 @@ class LauncherMonitor:
                 # Skip - this is our own emulation
                 return
             
-            # Smart emulation logic:
-            # - Modifiers: emit immediately (safe, always pass-through)
-            # - Non-modifiers WITHOUT active tap: emit immediately (normal typing)
-            # - Non-modifiers WITH active tap: DON'T emit yet, callback will decide
-            
-            from common.key_normalizer import is_modifier_key
-            if is_modifier_key(key):
-                # Modifier - always safe to emit
-                self._emit_key(key, is_press=True)
-            elif not self.tap_monitor.state.is_active:
-                # Non-modifier with no active tap - emit (normal typing)
-                self._emit_key(key, is_press=True)
-            # Non-modifier with active tap - DON'T emit yet, wait for callback
+            # TEMPORARY: Emit ALL keys to test if emulation works at all
+            # TODO: Restore smart logic after debugging
+            self._emit_key(key, is_press=True)
             
             # Process in TapMonitor
             original_on_press(key)
