@@ -120,10 +120,9 @@ class LauncherMonitor:
                 return
             
             self._releasing_keys.add(key)
-            try:
-                event_key = (key, False)  # (key, is_press)
-                self.logger.debug(f'[RELEASE] event_key created: {event_key}')
-            
+            event_key = (key, False)  # (key, is_press)
+            self.logger.debug(f'[RELEASE] event_key created: {event_key}')
+        
             # TODO: Check if this is our own emulated event
             # Disabled to debug
             # if event_key in self._emulated_events and self._emulated_events[event_key] > 0:
