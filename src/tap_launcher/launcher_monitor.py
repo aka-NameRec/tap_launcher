@@ -103,7 +103,9 @@ class LauncherMonitor:
             elif not self.tap_monitor.state.is_active:
                 # Non-modifier with no active tap - emit (normal typing)
                 self._emit_key(key, is_press=True)
-            # Non-modifier with active tap - DON'T emit yet, wait for callback decision
+            else:
+                # Non-modifier with active tap - DON'T emit yet, wait for callback decision
+                self.logger.debug(f'Delaying emulation for {key} - active tap in progress')
             
             # Process in TapMonitor
             original_on_press(key)
