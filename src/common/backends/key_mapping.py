@@ -99,6 +99,19 @@ EVDEV_TO_PYNPUT_KEY: dict[str, Any] = {
     # Menu key
     'KEY_MENU': Key.menu,
     
+    # Symbol keys
+    'KEY_SLASH': KeyCode.from_char('/'),
+    'KEY_DOT': KeyCode.from_char('.'),
+    'KEY_COMMA': KeyCode.from_char(','),
+    'KEY_MINUS': KeyCode.from_char('-'),
+    'KEY_EQUAL': KeyCode.from_char('='),
+    'KEY_LEFTBRACE': KeyCode.from_char('['),
+    'KEY_RIGHTBRACE': KeyCode.from_char(']'),
+    'KEY_SEMICOLON': KeyCode.from_char(';'),
+    'KEY_APOSTROPHE': KeyCode.from_char("'"),
+    'KEY_BACKSLASH': KeyCode.from_char('\\'),
+    'KEY_GRAVE': KeyCode.from_char('`'),
+    
     # Numpad keys (as special keys, not as numbers)
     'KEY_KP0': KeyCode.from_vk(96),  # Numpad 0
     'KEY_KP1': KeyCode.from_vk(97),  # Numpad 1
@@ -206,17 +219,36 @@ def pynput_to_evdev_code(key: Any) -> int:
     # For KeyCode with char
     if isinstance(key, KeyCode) and key.char:
         # Map character to evdev code
-        char_lower = key.char.lower()
+        char = key.char  # Use original char (case-sensitive for symbols)
+        char_lower = char.lower()
+        
         if char_lower.isalpha():
             # Convert 'a' -> KEY_A = 30, 'b' -> KEY_B = 48, etc.
             offset = ord(char_lower) - ord('a')
             return ecodes.KEY_A + offset
-        elif char_lower.isdigit():
+        elif char.isdigit():
             # Convert '0' -> KEY_0 = 11, '1' -> KEY_1 = 2, etc.
-            if char_lower == '0':
+            if char == '0':
                 return ecodes.KEY_0
             else:
-                return ecodes.KEY_1 + int(char_lower) - 1
+                return ecodes.KEY_1 + int(char) - 1
+        else:
+            # Map symbols to evdev codes
+            symbol_map = {
+                '/': ecodes.KEY_SLASH,
+                '.': ecodes.KEY_DOT,
+                ',': ecodes.KEY_COMMA,
+                '-': ecodes.KEY_MINUS,
+                '=': ecodes.KEY_EQUAL,
+                '[': ecodes.KEY_LEFTBRACE,
+                ']': ecodes.KEY_RIGHTBRACE,
+                ';': ecodes.KEY_SEMICOLON,
+                "'": ecodes.KEY_APOSTROPHE,
+                '\\': ecodes.KEY_BACKSLASH,
+                '`': ecodes.KEY_GRAVE,
+            }
+            if char in symbol_map:
+                return symbol_map[char]
     
     # For special keys (Key objects), use reverse mapping
     # Try to get from mapping first

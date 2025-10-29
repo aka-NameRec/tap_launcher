@@ -28,6 +28,7 @@ class LauncherMonitor:
         config: AppConfig,
         matcher: HotkeyMatcher,
         executor: CommandExecutor,
+        device_name: str | None = None,
     ) -> None:
         """Initialize the launcher monitor.
 
@@ -35,39 +36,33 @@ class LauncherMonitor:
             config: Application configuration
             matcher: Hotkey matcher for finding matching hotkeys
             executor: Command executor for running commands
+            device_name: Optional keyboard device name to use
         """
         self.config = config
         self.matcher = matcher
         self.executor = executor
         self.logger = logging.getLogger('tap_launcher.monitor')
 
-        # Track emulated events to prevent re-processing
-        # Format: {(key, is_press): count}
-        self._emulated_events: dict[tuple[Any, bool], int] = {}
-        
-        # Track which keys had their press emitted (for release logic)
-        # This survives decrement operations
-        self._press_was_emitted: set[Any] = set()
-        
-        # Thread-local flag to prevent infinite recursion in release
-        self._releasing_keys: set[Any] = set()
-        
-        # Track trigger keys to suppress their release
-        self._suppressed_trigger_keys: set[Any] = set()
+        # Create backend with optional device name
+        from common.backends.detector import create_backend
+        backend = create_backend(device_name=device_name)
 
         # Create TapMonitor from tap_detector with validation
+        # Backend (evdev) handles all event emulation internally
         self.tap_monitor = TapMonitor(
             timeout=config.tap_timeout,
             verbose=config.verbose_logging,
             on_keys_detected=self._on_tap_detected,
             on_tap_invalid=None,  # We don't need invalid tap notifications
             check_timer_delay=self._check_timer_delay,  # Check if timer should be delayed
+            backend=backend,  # Use configured backend
         )
 
     def start(self) -> None:
         """Start monitoring keyboard (blocking call).
 
         This method will block until interrupted (Ctrl+C or SIGTERM).
+        Backend (evdev) handles all event emulation internally.
         """
         self.logger.info(
             f'Starting tap launcher with timeout {self.config.tap_timeout}s'
@@ -85,102 +80,9 @@ class LauncherMonitor:
                     f"  {keys_str} → {hotkey.command} {' '.join(hotkey.args)}"
                 )
 
-        # Create wrappers for event interception
-        original_on_press = self.tap_monitor._on_press
-        original_on_release = self.tap_monitor._on_release
-        
-        def on_press_wrapper(key: Any) -> None:
-            """Wrapper for on_press with emulation checking."""
-            event_key = (key, True)  # (key, is_press)
-            
-            self.logger.debug(f'[WRAPPER] on_press: {key}, event_key={event_key}, counter={self._emulated_events.get(event_key, 0)}')
-            
-            # Check if this is our own emulated event
-            if event_key in self._emulated_events and self._emulated_events[event_key] > 0:
-                self._emulated_events[event_key] -= 1
-                self.logger.debug(f'[WRAPPER] Decremented counter for {key}, counter now={self._emulated_events[event_key]}')
-                if self._emulated_events[event_key] == 0:
-                    del self._emulated_events[event_key]
-                    self.logger.debug(f'[WRAPPER] Removed counter for {key}')
-                # Skip - this is our own emulation
-                self.logger.debug(f'[WRAPPER] Skipping emulated press: {key}')
-                return
-            
-            # Check if this key should be suppressed (matched hotkey trigger)
-            # But only check AFTER we get callback from tap_detector
-            # So we always emit press for now, but suppress release later
-            
-            # Always emit press (suppress will happen at release time)
-            self._emit_key(key, is_press=True)
-            
-            # Process in TapMonitor
-            original_on_press(key)
-        
-        def on_release_wrapper(key: Any) -> None:
-            """Wrapper for on_release with emulation checking."""
-            self.logger.debug(f'[RELEASE] on_release_wrapper called for {key}')
-            print(f'[DEBUG] on_release_wrapper called for {key}')
-            
-            # Check if we're already processing this key
-            if key in self._releasing_keys:
-                self.logger.debug(f'[RELEASE] Already releasing {key}, skipping')
-                return
-            
-            self._releasing_keys.add(key)
-            event_key = (key, False)  # (key, is_press)
-            self.logger.debug(f'[RELEASE] event_key created: {event_key}')
-        
-            # TODO: Check if this is our own emulated event
-            # Disabled to debug
-            # if event_key in self._emulated_events and self._emulated_events[event_key] > 0:
-            #     self._emulated_events[event_key] -= 1
-            #     if self._emulated_events[event_key] == 0:
-            #         del self._emulated_events[event_key]
-            #     # Skip - this is our own emulation
-            #     self.logger.debug(f'Skipping emulated release: {key}')
-            #     return
-            
-            # Check if this trigger key should be suppressed
-            if key in self._suppressed_trigger_keys:
-                self.logger.debug(f'[RELEASE] Suppressing release for {key} (matched hotkey)')
-                self._suppressed_trigger_keys.discard(key)  # Remove after first use
-                return  # Don't emit release
-            
-            # Check if we emitted the corresponding press
-            # If we didn't emit press, don't emit release either (prevent mismatch)
-            press_key = (key, True)
-            press_was_emitted = press_key in self._emulated_events and self._emulated_events[press_key] > 0
-            
-            # SIMPLIFIED: Always emit release
-            try:
-                from pynput.keyboard import Controller
-                controller = Controller()
-                print(f'[RELEASE] EMITTING release for {key}')
-                controller.release(key)
-                print(f'[RELEASE] EMITTED release for {key}')
-                self.logger.debug(f'[RELEASE] Actually emitted release for {key}')
-            except Exception as e:
-                self.logger.error(f'Failed to emit release: {e}')
-                print(f'[RELEASE] ERROR: {e}')
-            
-            # Process in TapMonitor (state management)
-            self.logger.debug(f'[RELEASE] Ready to call original_on_release for {key}')
-            try:
-                original_on_release(key)
-                self.logger.debug(f'[RELEASE] Done with original_on_release for {key}')
-            except Exception as e:
-                self.logger.error(f'[RELEASE] Error in original_on_release: {e}')
-                import traceback
-                self.logger.error(traceback.format_exc())
-            finally:
-                self._releasing_keys.discard(key)
-
-        # Start the tap monitor with wrappers (this blocks)
+        # Start tap monitor - backend handles all event emulation internally
         try:
-            self.tap_monitor.backend.start(
-                on_press=on_press_wrapper,
-                on_release=on_release_wrapper
-            )
+            self.tap_monitor.start()
         except KeyboardInterrupt:
             self.logger.info('Received interrupt signal, shutting down...')
             raise
@@ -208,49 +110,6 @@ class LauncherMonitor:
             bool: True if timer should be delayed, False otherwise
         """
         return self.matcher.should_delay_timer_start(first_key_normalized)
-
-    def _emit_key(self, key: Any, is_press: bool) -> None:
-        """Emit (re-inject) a keyboard event with counter protection.
-        
-        Args:
-            key: The key to emit
-            is_press: True for press, False for release
-        """
-        event_key = (key, is_press)
-        
-        # IMPORTANT: Check if this event is ALREADY in the counter
-        # This prevents infinite recursion
-        if event_key in self._emulated_events and self._emulated_events[event_key] > 0:
-            self.logger.debug(f'_emit_key: ALREADY emulated {key}, is_press={is_press}, skipping')
-            return
-        
-        # Increment counter BEFORE emulation
-        if event_key not in self._emulated_events:
-            self._emulated_events[event_key] = 0
-        self._emulated_events[event_key] += 1
-        
-        # Track if this was a press event
-        if is_press:
-            self._press_was_emitted.add(key)
-        
-        self.logger.debug(f'_emit_key: {key}, is_press={is_press}, counter now={self._emulated_events[event_key]}')
-        
-        # Emit the event
-        backend = self.tap_monitor.backend
-        if hasattr(backend, 'emit_key_event'):
-            backend.emit_key_event(key, is_press)
-        else:
-            # Fallback: use pynput Controller for pynput backend
-            try:
-                from pynput.keyboard import Controller
-                controller = Controller()
-                if is_press:
-                    controller.press(key)
-                else:
-                    controller.release(key)
-                self.logger.debug(f'_emit_key: actually emitted via pynput Controller')
-            except Exception as e:
-                self.logger.error(f'Failed to emit key event: {e}')
 
     def _on_tap_detected(
         self,
@@ -292,30 +151,27 @@ class LauncherMonitor:
                     f'Command execution failed for hotkey: {keys_str}'
                 )
 
-            # Hotkey matched - suppress trigger key
-            # (Don't re-emit the non-modifier)
-            if self.config.debug_mode:
-                self.logger.debug(f'Hotkey matched - trigger key suppressed')
-            
-            # Mark trigger key to suppress its release
-            if trigger_key:
-                self._suppressed_trigger_keys.add(trigger_key)
+            # NEW: Suppress trigger key if it's a non-modifier
+            if has_non_modifier and trigger_key:
+                from common.key_normalizer import is_modifier_key
+                if not is_modifier_key(trigger_key):
+                    # Suppress the non-modifier trigger key
+                    backend = self.tap_monitor.backend
+                    if hasattr(backend, 'suppress_key'):
+                        backend.suppress_key(trigger_key)
+                        if self.config.debug_mode:
+                            self.logger.debug(f'Suppressed trigger key: {trigger_key}')
+                    else:
+                        self.logger.warning(
+                            'Backend doesn\'t support key suppression'
+                        )
 
         else:
-            # No matching hotkey - re-emit trigger key
-            if has_non_modifier and trigger_key:
-                if self.config.debug_mode:
-                    keys_str = format_keys_display(keys)
-                    self.logger.debug(
-                        f'Tap detected but no matching hotkey: {keys_str} '
-                        f'(duration: {duration:.3f}s) - re-emitting trigger key'
-                    )
-                # Re-emit the press event (release already handled)
-                self._emit_key(trigger_key, is_press=True)
-            elif self.config.debug_mode:
+            # No matching hotkey - all keys will be emitted normally by backend
+            if self.config.debug_mode:
                 keys_str = format_keys_display(keys)
                 self.logger.debug(
-                    f'Modifier-only tap, no matching hotkey: {keys_str} '
+                    f'Tap detected but no matching hotkey: {keys_str} '
                     f'(duration: {duration:.3f}s)'
                 )
 

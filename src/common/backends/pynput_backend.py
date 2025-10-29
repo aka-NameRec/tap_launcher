@@ -1,7 +1,10 @@
 """Pynput-based keyboard backend for X11.
 
-This backend wraps pynput.keyboard.Listener to provide keyboard event monitoring
-on X11 sessions. It works only on X11 and is not compatible with Wayland.
+DEPRECATED: This backend is no longer used. All applications now use
+EvdevBackend which works on both X11 and Wayland with key suppression support.
+
+This file is kept temporarily for reference but should not be imported or used.
+It will be removed in a future version.
 
 No explicit inheritance from KeyboardBackend is required - structural subtyping.
 """

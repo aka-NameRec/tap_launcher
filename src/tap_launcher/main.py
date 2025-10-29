@@ -130,7 +130,13 @@ def _validate_config(config: Path | None, debug: bool = False) -> AppConfig:
     return app_config
 
 
-def _start_daemon(daemon: DaemonManager, app_config: AppConfig, foreground: bool, debug: bool = False) -> None:
+def _start_daemon(
+    daemon: DaemonManager,
+    app_config: AppConfig,
+    foreground: bool,
+    debug: bool = False,
+    device_name: str | None = None
+) -> None:
     """Start the daemon process."""
     # If not foreground, daemonize
     if not foreground:
@@ -148,7 +154,7 @@ def _start_daemon(daemon: DaemonManager, app_config: AppConfig, foreground: bool
     # Create components
     matcher = HotkeyMatcher(app_config.hotkeys)
     executor = CommandExecutor(log_commands=True)
-    monitor = LauncherMonitor(app_config, matcher, executor)
+    monitor = LauncherMonitor(app_config, matcher, executor, device_name=device_name)
 
     # Setup signal handlers for graceful shutdown
     setup_signal_handlers(monitor, daemon, foreground)
@@ -173,17 +179,25 @@ def start(
     config: Path | None = typer.Option(None, help="Path to config file"),
     foreground: bool = typer.Option(False, "--foreground", help="Run in foreground"),
     debug: bool = typer.Option(False, "--debug", help="Enable debug logging"),
+    device_name: str | None = typer.Option(
+        None,
+        '--device-name',
+        help='Force specific keyboard device by name (partial match, case-insensitive). '
+             'If not specified, auto-detects the first physical keyboard.',
+    ),
 ) -> None:
     """Start the tap launcher daemon.
 
     By default, the launcher runs as a background daemon process.
     Use --foreground to run in the current terminal (useful for testing).
     Use --debug to enable detailed debug logging.
+    Use --device-name to specify a specific keyboard device.
     
     Examples:
         tap-launcher start
         tap-launcher start --foreground
         tap-launcher start --debug
+        tap-launcher start --device-name "A4tech"
         tap-launcher start --config /path/to/config.toml --debug
     """
     
@@ -205,7 +219,7 @@ def start(
     app_config = _validate_config(config, debug)
 
     # Start the daemon
-    _start_daemon(daemon, app_config, foreground, debug)
+    _start_daemon(daemon, app_config, foreground, debug, device_name=device_name)
 
 
 @app.command()

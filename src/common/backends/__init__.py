@@ -5,12 +5,11 @@ allowing tap_detector and tap_launcher to work on both X11 and Wayland.
 """
 
 from .base import BackendNotAvailableError, KeyboardBackend
-from .detector import create_backend, detect_session_type
+from .detector import create_backend
 
 __all__ = [
     'KeyboardBackend',
     'BackendNotAvailableError',
     'create_backend',
-    'detect_session_type',
 ]
 
