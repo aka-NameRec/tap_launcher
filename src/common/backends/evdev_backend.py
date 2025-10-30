@@ -16,10 +16,13 @@ import queue
 import signal
 import sys
 import threading
+from dataclasses import dataclass
 from typing import Any, Callable
+from contextlib import suppress
+from evdev import ecodes, categorize
 
 from .base import BackendNotAvailableError
-from .key_mapping import evdev_to_pynput_key
+from .key_mapping import evdev_to_key_name, key_name_to_evdev_code
 
 
 class EvdevBackend:
@@ -83,6 +86,104 @@ class EvdevBackend:
             ) from e
         
         self.logger.debug('EvdevBackend initialized')
+
+    # -------------------- Helper types and utilities --------------------
+    @dataclass(slots=True)
+    class ParsedEvent:
+        device_id: int
+        key_ref: tuple[int, int]
+        keycode: int
+        value: int  # 0 release, 1 press, 2 repeat
+        key_name: str | None
+
+    @staticmethod
+    def _device_has_keyboard_caps(device: Any) -> bool:
+        from evdev import ecodes
+        caps = device.capabilities()
+        if ecodes.EV_KEY not in caps:
+            return False
+        keys = caps[ecodes.EV_KEY]
+        return (
+            ecodes.KEY_LEFTCTRL in keys
+            or ecodes.KEY_RIGHTCTRL in keys
+            or ecodes.KEY_LEFTALT in keys
+            or ecodes.KEY_A in keys
+        )
+
+    @staticmethod
+    def _is_virtual_uinput(device: Any, path: str) -> bool:
+        name_l = device.name.lower()
+        path_l = str(path).lower()
+        return 'uinput' in name_l or 'uinput' in path_l
+
+    def _emit(self, code: int, value: int) -> None:
+        if not self.uinput_device:
+            self.logger.error('No uinput device! Events will not be emulated back to system!')
+            return
+        from evdev import ecodes
+        self.uinput_device.write(ecodes.EV_KEY, code, value)
+        self.uinput_device.syn()
+
+    def _emit_press(self, code: int) -> None:
+        self._emit(code, 1)
+
+    def _emit_release(self, code: int) -> None:
+        self._emit(code, 0)
+
+    def _emit_repeat(self, code: int) -> None:
+        self._emit(code, 2)
+
+    def _safe_call(self, label: str, fn: Callable[[Any], None], arg: Any) -> None:
+        try:
+            fn(arg)
+        except Exception as e:  # noqa: BLE001
+            self.logger.error(f'Error in {label} callback: {e}')
+            import traceback
+            self.logger.debug(traceback.format_exc())
+
+    def _parse_event(self, device: Any, event: Any) -> 'EvdevBackend.ParsedEvent | None':
+        if event.type != ecodes.EV_KEY:
+            return None
+        key_event = categorize(event)
+        keycode = event.code
+        value = event.value
+        device_id = device.fileno() if hasattr(device, 'fileno') else id(device)
+        key_ref = (device_id, keycode)
+        key_name: str | None = None
+        try:
+            key_name = evdev_to_key_name(key_event.keycode)
+        except Exception:  # неизвестный keycode — обработаем отдельно
+            key_name = None
+        return EvdevBackend.ParsedEvent(device_id, key_ref, keycode, value, key_name)
+
+    def _handle_unknown_key(self, parsed: 'EvdevBackend.ParsedEvent') -> bool:
+        """Fallback обработка неизвестного keycode. Возвращает True, если обработано."""
+        if parsed.key_name is not None:
+            return False
+        # Регистрация press до эмиссии (для suppression)
+        if parsed.value == 1:
+            self.pressed_keys.add(parsed.key_ref)
+            self._emit_press(parsed.keycode)
+            return True
+        if parsed.value == 0:
+            self._emit_release(parsed.keycode)
+            self.pressed_keys.discard(parsed.key_ref)
+            self.suppressed_keys.discard(parsed.key_ref)
+            return True
+        if parsed.value == 2:
+            self._emit_repeat(parsed.keycode)
+            return True
+        return True
+
+    def _handle_suppressed(self, key_ref: tuple[int, int], value: int) -> bool:
+        if self._should_suppress_event(key_ref, value):
+            # На release также очищаем слоты
+            if value == 0:
+                self.pressed_keys.discard(key_ref)
+                self.buffered_presses.discard(key_ref)
+                self.suppressed_keys.discard(key_ref)
+            return True
+        return False
         
         # Register cleanup handlers to ensure devices are closed even on crash
         # Store reference to self in module-level set to prevent garbage collection
@@ -138,10 +239,8 @@ class EvdevBackend:
             self.logger.info('Created uinput virtual device for event emulation')
         except OSError as e:
             self.logger.error(
-                f'Failed to create uinput device: {e}\n'
-                f'This is required for key suppression. '
-                f'See docs/20251029-200001-proposal-key_suppression/'
-                f'20251029-201331-doc-SETUP-PERMISSIONS.md for setup instructions.'
+                f'Failed to create uinput device: {e}. '
+                f'This is required for key suppression. See README.md (UInput setup).'
             )
             raise
     
@@ -155,7 +254,6 @@ class EvdevBackend:
             BackendNotAvailableError: If no keyboard found or access denied.
         """
         import evdev
-        from evdev import ecodes
         
         # Try to list devices
         try:
@@ -182,30 +280,18 @@ class EvdevBackend:
         for path in device_paths:
             try:
                 device = evdev.InputDevice(path)
-                caps = device.capabilities()
-                
-                # Check if device has keyboard capabilities
-                if ecodes.EV_KEY in caps:
-                    keys = caps[ecodes.EV_KEY]
-                    # Verify it has common modifier keys (to distinguish from mouse buttons)
-                    if (ecodes.KEY_LEFTCTRL in keys or 
-                        ecodes.KEY_RIGHTCTRL in keys or
-                        ecodes.KEY_LEFTALT in keys or
-                        ecodes.KEY_A in keys):
-                        
-                        # Filter out virtual uinput devices (they have "uinput" in path or name)
-                        device_name_lower = device.name.lower()
-                        path_lower = str(path).lower()
-                        if 'uinput' in device_name_lower or 'uinput' in path_lower:
-                            virtual_keyboards.append(device)
-                            self.logger.debug(
-                                f'Found virtual keyboard device: {device.name} at {path} (skipping)'
-                            )
-                        else:
-                            physical_keyboards.append(device)
-                            self.logger.debug(
-                                f'Found physical keyboard device: {device.name} at {path}'
-                            )
+                if not self._device_has_keyboard_caps(device):
+                    continue
+                if self._is_virtual_uinput(device, path):
+                    virtual_keyboards.append(device)
+                    self.logger.debug(
+                        f'Found virtual keyboard device: {device.name} at {path} (skipping)'
+                    )
+                else:
+                    physical_keyboards.append(device)
+                    self.logger.debug(
+                        f'Found physical keyboard device: {device.name} at {path}'
+                    )
             except (OSError, PermissionError) as e:
                 # Skip devices we can't access
                 self.logger.debug(f'Skipping device {path}: {e}')
@@ -244,7 +330,6 @@ class EvdevBackend:
             BackendNotAvailableError: If no device with matching name found.
         """
         import evdev
-        from evdev import ecodes
         
         # List all devices
         try:
@@ -270,23 +355,12 @@ class EvdevBackend:
         for path in device_paths:
             try:
                 device = evdev.InputDevice(path)
-                caps = device.capabilities()
-                
-                # Check if device has keyboard capabilities
-                if ecodes.EV_KEY in caps:
-                    keys = caps[ecodes.EV_KEY]
-                    if (ecodes.KEY_LEFTCTRL in keys or 
-                        ecodes.KEY_RIGHTCTRL in keys or
-                        ecodes.KEY_LEFTALT in keys or
-                        ecodes.KEY_A in keys):
-                        
-                        # Check if name matches (case-insensitive partial match)
-                        device_name_lower = device.name.lower()
-                        if name_lower in device_name_lower:
-                            matching_devices.append(device)
-                            
+                if not self._device_has_keyboard_caps(device):
+                    continue
+                device_name_lower = device.name.lower()
+                if name_lower in device_name_lower:
+                    matching_devices.append(device)
             except (OSError, PermissionError):
-                # Skip devices we can't access
                 continue
         
         if not matching_devices:
@@ -331,27 +405,22 @@ class EvdevBackend:
         # Wait for threads to finish
         for thread in self._device_threads:
             if thread.is_alive():
-                thread.join(timeout=1.0)
+                with suppress(Exception):
+                    thread.join(timeout=1.0)
         self._device_threads.clear()
         
         # Ungrab and close all devices
         for device in self.devices:
-            try:
+            with suppress(Exception):
                 if hasattr(device, 'ungrab'):
                     device.ungrab()
-            except Exception:  # noqa: BLE001
-                pass
-            try:
+            with suppress(Exception):
                 device.close()
-            except Exception:  # noqa: BLE001
-                pass
         self.devices.clear()
         
         if self.uinput_device:
-            try:
+            with suppress(Exception):
                 self.uinput_device.close()
-            except Exception:  # noqa: BLE001
-                pass
             self.uinput_device = None
     
     @staticmethod
@@ -413,17 +482,11 @@ class EvdevBackend:
         # Log device information for user visibility
         if len(self.devices) == 1:
             device_info = f'{self.devices[0].name} ({self.devices[0].path})'
-            self.logger.info(f'Starting evdev keyboard listener: {device_info}')
-            import sys
-            if sys.stderr.isatty():
-                print(f'📍 Using keyboard device: {self.devices[0].name}', file=sys.stderr)
+            self.logger.info(f'Using keyboard device: {device_info}')
         else:
-            self.logger.info(f'Starting evdev keyboard listener: {len(self.devices)} devices')
-            import sys
-            if sys.stderr.isatty():
-                print(f'📍 Using {len(self.devices)} keyboard device(s):', file=sys.stderr)
-                for device in self.devices:
-                    print(f'   - {device.name}', file=sys.stderr)
+            self.logger.info(f'Using {len(self.devices)} keyboard device(s)')
+            for device in self.devices:
+                self.logger.info(f'  - {device.name} ({device.path})')
         
         self._stop_event.clear()
         
@@ -448,10 +511,8 @@ class EvdevBackend:
         except Exception as e:
             # Clean up any grabbed devices
             for device in grabbed_devices:
-                try:
+                with suppress(Exception):
                     device.ungrab()
-                except Exception:  # noqa: BLE001
-                    pass
             raise
         
         # Always create uinput for emulating events back to system
@@ -461,10 +522,8 @@ class EvdevBackend:
             # If uinput creation fails, we can't continue
             # Clean up grabbed devices
             for device in grabbed_devices:
-                try:
+                with suppress(Exception):
                     device.ungrab()
-                except Exception:  # noqa: BLE001
-                    pass
             raise BackendNotAvailableError(
                 'Failed to create uinput device. This is required for event emulation. '
                 'See setup instructions for uinput permissions.'
@@ -499,74 +558,22 @@ class EvdevBackend:
                     if event_count == 1:
                         self.logger.info('First event received - event loop is working')
                     
-                    # Process only keyboard events (EV_KEY)
-                    if event.type != ecodes.EV_KEY:
+                    parsed = self._parse_event(device, event)
+                    if not parsed:
                         if event_count <= 3:
                             self.logger.debug(f'Non-keyboard event: type={event.type}, code={event.code}')
                         continue
-                    
-                    key_event = categorize(event)
-                    keycode = event.code
-                    value = event.value  # 0=release, 1=press, 2=repeat
-                    # Per-device key reference
-                    device_id = device.fileno() if hasattr(device, 'fileno') else id(device)
-                    key_ref = (device_id, keycode)
-                    
+                    key_ref = parsed.key_ref
+                    keycode = parsed.keycode
+                    value = parsed.value
+                    key_name = parsed.key_name
                     if event_count <= 5:
                         self.logger.debug(
-                            f'Keyboard event #{event_count}: keycode={keycode}, '
-                            f'keycode_str={key_event.keycode}, value={value}'
+                            f'Keyboard event #{event_count}: code={keycode}, value={value}, name={key_name}'
                         )
-                    
-                    # Convert evdev keycode to pynput Key/KeyCode object
-                    pynput_key = None
-                    try:
-                        pynput_key = evdev_to_pynput_key(key_event.keycode)
-                    except KeyError:
-                        # Fallback: emulate raw keycode immediately with syn
-                        if value == 1:  # Press
-                            # Register press before emitting so suppression (if any) can see it
-                            self.pressed_keys.add(key_ref)
-                            if self.uinput_device:
-                                self.uinput_device.write(ecodes.EV_KEY, keycode, 1)
-                                self.uinput_device.syn()
-                            continue
-                        elif value == 0:  # Release
-                            if self.uinput_device:
-                                self.uinput_device.write(ecodes.EV_KEY, keycode, 0)
-                                self.uinput_device.syn()
-                            self.pressed_keys.discard(key_ref)
-                            self.suppressed_keys.discard(key_ref)
-                            continue
-                        elif value == 2:  # Repeat
-                            if self.uinput_device:
-                                self.uinput_device.write(ecodes.EV_KEY, keycode, 2)
-                                self.uinput_device.syn()
-                            continue
-                    except Exception as e:
-                        # Unexpected error during conversion
-                        self.logger.error(
-                            f'Error converting keycode {key_event.keycode}: {e}. '
-                            f'Event code: {keycode}, value: {value}. '
-                            f'Emulating raw keycode to prevent key loss.'
-                        )
-                        # Fallback: try to emulate even on unexpected errors
-                        if value == 1:  # Press
-                            if self.uinput_device:
-                                self.uinput_device.write(ecodes.EV_KEY, keycode, 1)
-                                self.buffered_presses.add(key_ref)
-                                self.pressed_keys.add(key_ref)
-                        elif value == 0:  # Release
-                            if self.uinput_device and key_ref in self.buffered_presses:
-                                self.uinput_device.write(ecodes.EV_KEY, keycode, 0)
-                                self.uinput_device.syn()
-                                self.buffered_presses.discard(key_ref)
-                            self.pressed_keys.discard(key_ref)
-                        elif value == 2:  # Repeat
-                            if self.uinput_device:
-                                self.uinput_device.write(ecodes.EV_KEY, keycode, 2)
-                                self.uinput_device.syn()
-                        continue  # Skip callback
+                    # Unknown key fallback
+                    if self._handle_unknown_key(parsed):
+                        continue
                     
                     # Process event based on state
                     if value == 1:  # Press
@@ -574,68 +581,45 @@ class EvdevBackend:
                         self.pressed_keys.add(key_ref)
                         # CRITICAL: Call callback BEFORE emulation
                         # This allows suppression to happen before event reaches system
-                        try:
-                            if event_count <= 5:
-                                self.logger.debug(f'Calling on_press({pynput_key})')
-                            on_press(pynput_key)
-                            if event_count <= 5:
-                                self.logger.debug(f'on_press returned successfully')
-                        except Exception as e:
-                            self.logger.error(f'Error in on_press callback: {e}')
-                            import traceback
-                            self.logger.debug(traceback.format_exc())
+                        if event_count <= 5:
+                            self.logger.debug(f'Calling on_press({key_name})')
+                        self._safe_call('on_press', on_press, key_name)
                             # Continue processing - don't let callback errors break event loop
                         
                         # After callback, check if we should suppress
-                        if self._should_suppress_event(key_ref, value):
+                        if self._handle_suppressed(key_ref, value):
                             self.logger.debug(f'Suppressing press: keycode={keycode}')
                             continue  # Don't emulate
                         
                         # Emulate press immediately with syn for all keys
-                        if self.uinput_device:
-                            if event_count <= 5:
-                                self.logger.debug(f'Emulating press for keycode {keycode}')
-                            self.uinput_device.write(ecodes.EV_KEY, keycode, 1)
-                            self.uinput_device.syn()
-                        else:
-                            self.logger.error('No uinput device! Events will not be emulated back to system!')
+                        if event_count <= 5:
+                            self.logger.debug(f'Emulating press for keycode {keycode}')
+                        self._emit_press(keycode)
                         # pressed_keys was added before; keep it until release
                     
                     elif value == 0:  # Release
                         # Call callback
-                        try:
-                            on_release(pynput_key)
-                        except Exception as e:
-                            self.logger.error(f'Error in on_release callback: {e}')
-                            import traceback
-                            self.logger.debug(traceback.format_exc())
+                        self._safe_call('on_release', on_release, key_name)
                             # Continue processing - don't let callback errors break event loop
                         
                         # Check suppression AFTER callback
-                        if self._should_suppress_event(key_ref, value):
+                        if self._handle_suppressed(key_ref, value):
                             self.logger.debug(f'Suppressing release: keycode={keycode}')
-                            self.pressed_keys.discard(key_ref)
-                            self.buffered_presses.discard(key_ref)
-                            self.suppressed_keys.discard(key_ref)
                             continue  # Don't emulate
                         
                         # Emulate release immediately with syn for all keys
-                        if self.uinput_device:
-                            self.uinput_device.write(ecodes.EV_KEY, keycode, 0)
-                            self.uinput_device.syn()
+                        self._emit_release(keycode)
                         self.pressed_keys.discard(key_ref)
                         self.buffered_presses.discard(key_ref)
                     
                     elif value == 2:  # Repeat
                         # Check suppression
-                        if self._should_suppress_event(key_ref, value):
+                        if self._handle_suppressed(key_ref, value):
                             self.logger.debug(f'Suppressing repeat: keycode={keycode}')
                             continue
                         
                         # Emulate repeat - send with sync
-                        if self.uinput_device:
-                            self.uinput_device.write(ecodes.EV_KEY, keycode, 2)
-                            self.uinput_device.syn()
+                        self._emit_repeat(keycode)
                 
                 except Exception as e:
                     # Error processing single event - log and continue
@@ -730,10 +714,8 @@ class EvdevBackend:
         Args:
             key: pynput Key/KeyCode object to suppress (typically trigger_key)
         """
-        from .key_mapping import pynput_to_evdev_code
-        
         try:
-            keycode = pynput_to_evdev_code(key)
+            keycode = key_name_to_evdev_code(key)
             # Suppress all presses for this key that are currently active,
             # i.e. mark all pressed_keys that match code across all devices
             to_mark = [ref for ref in self.pressed_keys if ref[1] == keycode]
