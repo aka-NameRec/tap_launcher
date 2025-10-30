@@ -3,41 +3,23 @@
 Exports EvdevBackend while allowing internal helpers/modules to evolve.
 """
 
-# For now, we keep the implementation here to preserve behavior.
-# In subsequent steps, we will extract DeviceManager, EventRouter, KeyState,
-# UInputWriter, and Processor into dedicated modules inside this package.
-
 from __future__ import annotations
 
-# Reuse the previous single-file implementation contents
-# by importing from the legacy module path if needed.
-
-# NOTE: Implementation is inlined below (copied from the prior module)
-# so external imports `from common.backends.evdev_backend import EvdevBackend`
-# remain stable.
-
 import atexit
-import logging
 import os
 import queue
 import signal
-from dataclasses import dataclass
 from typing import Any, Callable
 from contextlib import suppress
-from evdev import ecodes, categorize
 
 from ..base import BackendNotAvailableError
-from ..key_mapping import evdev_to_key_name, key_name_to_evdev_code
-from .types import ParsedEvent
-from .uinput_writer import UInputWriter
-from .key_state import KeyState
 from .device_manager import DeviceManager
 from .event_router import EventRouter
-from .processor import EventProcessor
+from .key_state import KeyState
 from .parser import parse_event
+from .processor import EventProcessor
 from .types import ParsedEvent
 from .uinput_writer import UInputWriter
-from .key_state import KeyState
 
 
 class EvdevBackend:
@@ -48,7 +30,8 @@ class EvdevBackend:
         device_path: str | None = None,
         device_name: str | None = None
     ) -> None:
-        self.logger = logging.getLogger('common.backend.evdev')
+        from common.logging_utils import get_logger
+        self.logger = get_logger('common.backend.evdev')
         self.device_path = device_path
         self.device_name = device_name
         self.devices: list[Any] = []
@@ -59,7 +42,7 @@ class EvdevBackend:
         self._event_queue: queue.Queue[tuple[Any, Any]] = queue.Queue(maxsize=1000)
 
         # Per-device/press key state
-        self.state = KeyState()
+        self.key_state = KeyState(self.logger)
 
         try:
             import evdev  # noqa: F401
@@ -87,70 +70,6 @@ class EvdevBackend:
             signal.signal(signal.SIGINT, signal_handler)
             EvdevBackend._cleanup_registered = True
 
-    # -------------------- Helper types and utilities --------------------
-    @staticmethod
-    def _device_has_keyboard_caps(device: Any) -> bool:
-        caps = device.capabilities()
-        if ecodes.EV_KEY not in caps:
-            return False
-        keys = caps[ecodes.EV_KEY]
-        return (
-            ecodes.KEY_LEFTCTRL in keys
-            or ecodes.KEY_RIGHTCTRL in keys
-            or ecodes.KEY_LEFTALT in keys
-            or ecodes.KEY_A in keys
-        )
-
-    @staticmethod
-    def _is_virtual_uinput(device: Any, path: str) -> bool:
-        name_l = device.name.lower()
-        path_l = str(path).lower()
-        return 'uinput' in name_l or 'uinput' in path_l
-
-    def _emit(self, code: int, value: int) -> None:
-        if not self.uinput_device:
-            self.logger.error('No uinput device! Events will not be emulated back to system!')
-            return
-        self.uinput_device.write(ecodes.EV_KEY, code, value)
-        self.uinput_device.syn()
-
-    def _emit_press(self, code: int) -> None:
-        self._emit(code, 1)
-
-    def _emit_release(self, code: int) -> None:
-        self._emit(code, 0)
-
-    def _emit_repeat(self, code: int) -> None:
-        self._emit(code, 2)
-
-    def _safe_call(self, label: str, fn: Callable[[Any], None], arg: Any) -> None:
-        try:
-            fn(arg)
-        except Exception as e:  # noqa: BLE001
-            self.logger.error(f'Error in {label} callback: {e}')
-            import traceback
-            self.logger.debug(traceback.format_exc())
-
-    def _parse_event(self, device: Any, event: Any) -> ParsedEvent | None:
-        if event.type != ecodes.EV_KEY:
-            return None
-        key_event = categorize(event)
-        keycode = event.code
-        value = event.value
-        device_id = device.fileno() if hasattr(device, 'fileno') else id(device)
-        key_ref = (device_id, keycode)
-        key_name: str | None = None
-        try:
-            key_name = evdev_to_key_name(key_event.keycode)
-        except Exception:
-            key_name = None
-        return ParsedEvent(device_id, key_ref, keycode, value, key_name)
-
-    # Unknown-key handling is delegated to EventProcessor.handle_unknown
-
-    def _handle_suppressed(self, key_ref: tuple[int, int], value: int) -> bool:
-        return self.state.is_suppressed(key_ref, value)
-
     # -------------- uinput creation --------------
     def _create_uinput_device(self) -> None:
         if self.uinput_device is not None:
@@ -165,108 +84,6 @@ class EvdevBackend:
                 f'This is required for key suppression. See README.md (UInput setup).'
             )
             raise
-
-    # -------------- device discovery --------------
-    def _find_keyboard_device(self) -> Any:
-        import evdev
-        try:
-            device_paths = evdev.list_devices()
-        except PermissionError as e:
-            raise BackendNotAvailableError(
-                'Permission denied accessing /dev/input/. '
-                'Add user to "input" group:\n'
-                '  sudo usermod -a -G input $USER\n'
-                'Then log out and back in for changes to take effect.'
-            ) from e
-        if not device_paths:
-            raise BackendNotAvailableError(
-                'No input devices found in /dev/input/. '
-                'This might indicate a system configuration issue.'
-            )
-        physical_keyboards = []
-        virtual_keyboards = []
-        for path in device_paths:
-            try:
-                device = evdev.InputDevice(path)
-                if not self._device_has_keyboard_caps(device):
-                    continue
-                if self._is_virtual_uinput(device, path):
-                    virtual_keyboards.append(device)
-                    self.logger.debug(
-                        f'Found virtual keyboard device: {device.name} at {path} (skipping)'
-                    )
-                else:
-                    physical_keyboards.append(device)
-                    self.logger.debug(
-                        f'Found physical keyboard device: {device.name} at {path}'
-                    )
-            except (OSError, PermissionError) as e:
-                self.logger.debug(f'Skipping device {path}: {e}')
-                continue
-        keyboards = physical_keyboards if physical_keyboards else virtual_keyboards
-        if not keyboards:
-            raise BackendNotAvailableError(
-                'No keyboard devices found. '
-                'Found input devices, but none have keyboard capabilities. '
-                'This might indicate a permission or configuration issue.'
-            )
-        selected = physical_keyboards if physical_keyboards else virtual_keyboards
-        device_type = 'physical' if physical_keyboards else 'virtual'
-        self.logger.info(f'Found {len(selected)} {device_type} keyboard device(s)')
-        for device in selected:
-            self.logger.info(f'  - {device.name} ({device.path})')
-        return selected
-
-    def _find_keyboard_by_name(self, name: str) -> Any:
-        import evdev
-        try:
-            device_paths = evdev.list_devices()
-        except PermissionError as e:
-            raise BackendNotAvailableError(
-                'Permission denied accessing /dev/input/. '
-                'Add user to "input" group:\n'
-                '  sudo usermod -a -G input $USER\n'
-                'Then log out and back in for changes to take effect.'
-            ) from e
-        if not device_paths:
-            raise BackendNotAvailableError(
-                'No input devices found in /dev/input/. '
-                'This might indicate a system configuration issue.'
-            )
-        name_lower = name.lower()
-        matching_devices = []
-        for path in device_paths:
-            try:
-                device = evdev.InputDevice(path)
-                if not self._device_has_keyboard_caps(device):
-                    continue
-                device_name_lower = device.name.lower()
-                if name_lower in device_name_lower:
-                    matching_devices.append(device)
-            except (OSError, PermissionError):
-                continue
-        if not matching_devices:
-            available = []
-            for path in device_paths:
-                try:
-                    device = evdev.InputDevice(path)
-                    if self._device_has_keyboard_caps(device):
-                        available.append(device.name)
-                except (OSError, PermissionError):
-                    continue
-            available_str = '\n  - '.join(available) if available else '(none found)'
-            raise BackendNotAvailableError(
-                f'No keyboard device found matching name "{name}".\n'
-                f'Available keyboard devices:\n  - {available_str}'
-            )
-        physical = [d for d in matching_devices if 'uinput' not in d.name.lower()]
-        selected = physical if physical else matching_devices
-        self.logger.info(
-            f'Found {len(selected)} keyboard device(s) matching "{name}"'
-        )
-        for device in selected:
-            self.logger.info(f'  - {device.name} ({device.path})')
-        return selected
 
     @staticmethod
     def _global_cleanup() -> None:
@@ -358,10 +175,8 @@ class EvdevBackend:
             # Run router with processor
             processor = EventProcessor(
                 logger=self.logger,
-                state=self.state,
-                emitter=self.uinput_device,
-                handle_suppressed=self._handle_suppressed,
-                safe_call=self._safe_call,
+                key_state=self.key_state,
+                uinput_writer=self.uinput_device,
             )
             router = EventRouter(
                 logger=self.logger,
@@ -378,24 +193,6 @@ class EvdevBackend:
         finally:
             self._cleanup_devices()
 
-    def _read_device_loop(self, device: Any) -> None:
-        try:
-            for event in device.read_loop():
-                if self._stop_event.is_set():
-                    break
-                try:
-                    self._event_queue.put((device, event), timeout=0.1)
-                except queue.Full:
-                    self.logger.warning(
-                        f'Event queue full, dropping event from {device.name}'
-                    )
-        except OSError as e:
-            self.logger.error(f'Error reading from device {device.name}: {e}')
-        except Exception as e:  # noqa: BLE001
-            self.logger.error(
-                f'Unexpected error in read loop for {device.name}: {e}'
-            )
-
     def stop(self) -> None:
         self.logger.info('Stopping evdev keyboard listener')
         self._stop_event.set()
@@ -403,21 +200,12 @@ class EvdevBackend:
         if hasattr(EvdevBackend, '_instances'):
             EvdevBackend._instances.discard(self)
 
-    def _should_suppress_event(self, key_ref: tuple[int, int], value: int) -> bool:
-        if key_ref in self.suppressed_keys:
-            if value == 0:
-                self.suppressed_keys.discard(key_ref)
-            return True
-        return False
+    def suppress_key(self, key_name: str) -> None:
+        """Suppress a key by its canonical name.
 
-    def suppress_key(self, key: Any) -> None:
-        try:
-            keycode = key_name_to_evdev_code(key)
-            to_mark = [ref for ref in self.pressed_keys if ref[1] == keycode]
-            for ref in to_mark:
-                self.suppressed_keys.add(ref)
-            self.logger.debug(f'Suppressing keycode {keycode} (all active presses: {len(to_mark)})')
-        except KeyError:
-            self.logger.warning(f'Cannot suppress key {key}: no evdev mapping')
+        Args:
+            key_name: Canonical key name (e.g., 'ctrl_l', 'delete')
+        """
+        self.key_state.mark_suppressed_for_active(key_name)
 
 

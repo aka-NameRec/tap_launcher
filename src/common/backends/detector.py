@@ -5,14 +5,15 @@ All applications (tap-detector and tap-launcher) now use evdev backend
 which works on both X11 and Wayland with key suppression support.
 """
 
-import logging
 from typing import Any
+
+from common.logging_utils import get_logger
 
 from .base import BackendNotAvailableError, KeyboardBackend
 from .evdev_backend import EvdevBackend
 
 
-logger = logging.getLogger('common.backend')
+logger = get_logger('common.backend')
 
 
 def create_backend(

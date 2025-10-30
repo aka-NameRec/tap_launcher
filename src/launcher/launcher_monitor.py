@@ -3,11 +3,10 @@
 This module integrates tap detection with command execution.
 """
 
-import logging
 from typing import Any
-from common.key_normalizer import is_modifier_key
 
-from common.key_normalizer import format_keys_display
+from common.key_normalizer import format_keys_display, is_modifier_key
+from common.logging_utils import get_logger
 from common.tap_monitor import TapMonitor
 
 from .command_executor import CommandExecutor
@@ -42,7 +41,7 @@ class LauncherMonitor:
         self.config = config
         self.matcher = matcher
         self.executor = executor
-        self.logger = logging.getLogger('tap_launcher.monitor')
+        self.logger = get_logger('tap_launcher.monitor')
 
         # Create backend with optional device name
         from common.backends.detector import create_backend

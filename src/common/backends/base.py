@@ -43,14 +43,13 @@ class KeyboardBackend(Protocol):
         
         Args:
             on_press: Callback for key press events.
-                     Receives pynput Key or KeyCode object.
+                     Receives canonical key name (str) like 'ctrl_l', 'a', 'delete'.
             on_release: Callback for key release events.
-                       Receives pynput Key or KeyCode object.
+                       Receives canonical key name (str) like 'ctrl_l', 'a', 'delete'.
         
         Note:
-            The callbacks receive pynput-compatible Key/KeyCode objects
-            regardless of the underlying backend (pynput or evdev).
-            This ensures compatibility with existing tap detection logic.
+            The callbacks receive canonical key names (strings) regardless of the
+            underlying backend. This ensures compatibility with tap detection logic.
         """
         ...
     
@@ -66,7 +65,7 @@ class KeyboardBackend(Protocol):
         """Return the name of this backend for logging and debugging.
         
         Returns:
-            Human-readable backend name (e.g., "pynput (X11)", "evdev (Wayland)")
+            Human-readable backend name (e.g., "evdev (Wayland/X11)")
         """
         ...
 
@@ -75,7 +74,7 @@ class BackendNotAvailableError(Exception):
     """Raised when a backend cannot be initialized.
     
     This can happen for various reasons:
-    - Required library not installed (e.g., pynput, evdev)
+    - Required library not installed (e.g., evdev)
     - No suitable input devices found (for evdev)
     - Permission denied (for evdev /dev/input/ access)
     - Incompatible system configuration

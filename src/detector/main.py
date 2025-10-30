@@ -1,12 +1,12 @@
 """Main entry point for tap-detector CLI application."""
 
-import logging
 import sys
 
 import typer
 
 from common.backends.detector import create_backend
-from common.backends.evdev_backend.device_manager import DeviceManager
+from common.backends.device_listing import list_keyboard_devices
+from common.logging_utils import get_logger
 from common.tap_monitor import TapMonitor
 
 from .formatter import format_header
@@ -98,48 +98,29 @@ def main(
 
 def _list_keyboard_devices() -> None:
     """List all available keyboard devices."""
-    import evdev
-    
-    logger = logging.getLogger('detector.device_list')
-    device_manager = DeviceManager(logger)
-    
     try:
-        device_paths = device_manager.list_devices()
-    except PermissionError:
+        devices = list_keyboard_devices()
+    except PermissionError as e:
         typer.echo(
-            '❌ Permission denied accessing /dev/input/\n'
+            f'❌ {e}\n'
             '   Add user to "input" group:\n'
             '   sudo usermod -a -G input $USER\n'
             '   Then log out and back in.',
             err=True
         )
         raise typer.Exit(1)
-    
-    if not device_paths:
-        typer.echo('❌ No input devices found in /dev/input/')
+    except OSError as e:
+        typer.echo(f'❌ Error listing devices: {e}', err=True)
         raise typer.Exit(1)
     
-    physical_keyboards = []
-    virtual_keyboards = []
-    
-    for path in device_paths:
-        try:
-            device = evdev.InputDevice(path)
-            
-            if not DeviceManager.device_has_keyboard_caps(device):
-                continue
-            
-            if DeviceManager.is_virtual_uinput(device, path):
-                virtual_keyboards.append(device)
-            else:
-                physical_keyboards.append(device)
-        except (OSError, PermissionError):
-            continue
-    
-    if not physical_keyboards and not virtual_keyboards:
+    if not devices:
         typer.echo('❌ No keyboard devices found')
         typer.echo('   Found input devices, but none have keyboard capabilities.')
         raise typer.Exit(1)
+    
+    # Separate physical and virtual devices
+    physical_keyboards = [d for d in devices if not d['is_virtual']]
+    virtual_keyboards = [d for d in devices if d['is_virtual']]
     
     # Display physical keyboards first
     typer.echo('📱 Available keyboard devices:\n')
@@ -147,20 +128,20 @@ def _list_keyboard_devices() -> None:
     if physical_keyboards:
         typer.echo('Physical keyboards:')
         for i, device in enumerate(physical_keyboards, 1):
-            typer.echo(f'  {i}. {device.name}')
-            typer.echo(f'     Path: {device.path}')
+            typer.echo(f'  {i}. {device["name"]}')
+            typer.echo(f'     Path: {device["path"]}')
         typer.echo()
     
     if virtual_keyboards:
         typer.echo('Virtual keyboards (uinput):')
         for i, device in enumerate(virtual_keyboards, 1):
-            typer.echo(f'  {i}. {device.name} [VIRTUAL]')
-            typer.echo(f'     Path: {device.path}')
+            typer.echo(f'  {i}. {device["name"]} [VIRTUAL]')
+            typer.echo(f'     Path: {device["path"]}')
         typer.echo()
     
     # Show usage hint
     if physical_keyboards:
-        example_name = physical_keyboards[0].name.split()[0] if physical_keyboards else None
+        example_name = physical_keyboards[0]['name'].split()[0] if physical_keyboards else None
         if example_name:
             typer.echo(f'💡 To use a specific device:\n   tap-detector --device-name "{example_name}"')
 

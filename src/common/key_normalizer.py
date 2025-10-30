@@ -20,11 +20,11 @@ def normalize_key(key: Any) -> str:
         str: Canonical key name (e.g., "ctrl_l", "a", "f1")
 
     Examples:
-        >>> normalize_key(Key.ctrl_l)
+        >>> normalize_key('ctrl_l')
         'ctrl_l'
-        >>> normalize_key(KeyCode.from_char('a'))
+        >>> normalize_key('A')
         'a'
-        >>> normalize_key(Key.f1)
+        >>> normalize_key('f1')
         'f1'
     """
     if isinstance(key, str):
@@ -44,7 +44,7 @@ def format_keys_display(keys: set[Any]) -> str:
         str: Formatted string like "ctrl_l+shift_l+a"
 
     Examples:
-        >>> format_keys_display({Key.ctrl_l, Key.shift_l})
+        >>> format_keys_display({'ctrl_l', 'shift_l'})
         'ctrl_l+shift_l'
     """
     normalized = [normalize_key(k) for k in keys]
@@ -80,9 +80,9 @@ def format_keys_toml(keys: set[Any]) -> list[str]:
         list[str]: Sorted list of normalized key names
 
     Examples:
-        >>> format_keys_toml({Key.ctrl_l, Key.shift_l, KeyCode.from_char('a')})
+        >>> format_keys_toml({'ctrl_l', 'shift_l', 'a'})
         ['ctrl_l', 'shift_l', 'a']
-        >>> format_keys_toml({Key.alt_r, KeyCode.from_char('t')})
+        >>> format_keys_toml({'alt_r', 't'})
         ['alt_r', 't']
     """
     normalized = [normalize_key(k) for k in keys]

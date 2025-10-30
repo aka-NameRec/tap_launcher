@@ -37,7 +37,7 @@ def setup_logging(config: AppConfig, debug: bool = False) -> None:
         config.verbose_logging = True
 
     # Create logger
-    logger = logging.getLogger('tap_launcher')
+    logger = get_logger('tap_launcher')
     logger.setLevel(getattr(logging, config.log_level))
 
     # Clear any existing handlers
@@ -78,7 +78,7 @@ def setup_signal_handlers(monitor: LauncherMonitor, daemon: DaemonManager, is_fo
     """
     def signal_handler(signum: int, _frame: Any) -> None:
         """Handle SIGINT (Ctrl-C) and SIGTERM signals."""
-        logger = logging.getLogger('tap_launcher')
+        logger = get_logger('tap_launcher')
         logger.info(f'Received signal {signum}, shutting down...')
 
         # Stop the monitor
@@ -169,7 +169,7 @@ def _start_daemon(
         daemon.cleanup()
         sys.exit(0)
     except Exception as e:
-        logging.getLogger('tap_launcher').error(f'Fatal error: {e}', exc_info=True)
+        get_logger('tap_launcher').error(f'Fatal error: {e}', exc_info=True)
         daemon.cleanup()
         sys.exit(1)
 

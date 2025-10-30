@@ -50,6 +50,11 @@ verbose_logging = false
 # Multiple hotkey configurations
 # Use tap-detector to find your key combinations!
 #
+# start_timer_from_second_key: If True, tap timer starts from the second key
+#   press. Useful for combinations where the first key may be held down while
+#   searching for the second key (e.g., Ctrl held, then Shift found).
+#   Default is False (classic behavior: timer starts from first key).
+#
 # Example 1: Switch keyboard layout
 [[hotkeys]]
 keys = ["ctrl_l", "shift_l"]

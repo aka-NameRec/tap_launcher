@@ -3,11 +3,12 @@
 This module handles executing commands when tap combinations are detected.
 """
 
-import logging
 import os
 import shutil
 import subprocess
 from pathlib import Path
+
+from common.logging_utils import get_logger
 
 from .models import HotkeyConfig
 
@@ -26,7 +27,7 @@ class CommandExecutor:
             log_commands: Whether to log command execution
         """
         self.log_commands = log_commands
-        self.logger = logging.getLogger('tap_launcher.executor')
+        self.logger = get_logger('tap_launcher.executor')
 
     def execute(self, hotkey: HotkeyConfig) -> bool:
         """Execute the command associated with a hotkey.

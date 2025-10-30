@@ -54,8 +54,7 @@ class HotkeyMatcher:
             ...     HotkeyConfig(keys=["ctrl_l", "shift_l"], command="cmd1"),
             ...     HotkeyConfig(keys=["alt_l", "t"], command="cmd2"),
             ... ])
-            >>> from pynput.keyboard import Key
-            >>> keys = {Key.ctrl_l, Key.shift_l}
+            >>> keys = {"ctrl_l", "shift_l"}
             >>> hotkey = matcher.match(keys)
             >>> hotkey.command
             'cmd1'
@@ -70,13 +69,13 @@ class HotkeyMatcher:
         return self._hotkey_map.get(keys_frozen)
 
     def _normalize_keys(self, keys: set[Any]) -> list[str]:
-        """Normalize pynput Key objects to canonical key names.
+        """Normalize keys to canonical key names.
 
-        This uses the key_normalizer from tap_detector to ensure
-        consistent naming (e.g., Key.ctrl_l -> "ctrl_l").
+        This uses the key_normalizer to ensure consistent naming
+        (e.g., "ctrl_l" -> "ctrl_l", any string key name -> lowercase).
 
         Args:
-            keys: Set of keys to normalize
+            keys: Set of keys to normalize (typically canonical key names as strings)
 
         Returns:
             list[str]: List of normalized key names

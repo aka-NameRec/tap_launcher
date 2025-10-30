@@ -1,12 +1,19 @@
 """Output formatting utilities for tap detector.
 
-This module provides functions to format key detection results for console output,
-including TOML configuration fragments.
+This module provides detector-specific formatting functions for console output,
+including TOML configuration fragments. Generic verbose formatting is provided
+by common.verbose_formatter.
 """
 
 from .constants import __version__
 from common.key_normalizer import format_keys_display
 from common.key_normalizer import format_keys_toml
+from common.verbose_formatter import (
+    format_verbose_press,
+    format_verbose_release,
+    format_verbose_tap_result,
+    format_verbose_waiting,
+)
 
 
 def format_header() -> str:
@@ -53,37 +60,8 @@ Listening for key combinations...
 """
 
 
-def format_verbose_press(key_str: str, elapsed: float, is_first: bool) -> str:
-    """Format a verbose key press event.
-
-    Args:
-        key_str: Normalized key string
-        elapsed: Time elapsed since combination start
-        is_first: Whether this is the first key in the combination
-
-    Returns:
-        str: Formatted trace message
-    """
-    if is_first:
-        return f'[TRACE] {elapsed:.3f}s: {key_str} pressed\n[TRACE]        → Combination started'
-    return f'[TRACE] {elapsed:.3f}s: {key_str} pressed'
-
-
-def format_verbose_release(key_str: str, elapsed: float, all_released: bool) -> str:
-    """Format a verbose key release event.
-
-    Args:
-        key_str: Normalized key string
-        elapsed: Time elapsed since combination start
-        all_released: Whether all keys have been released
-
-    Returns:
-        str: Formatted trace message
-    """
-    msg = f'[TRACE] {elapsed:.3f}s: {key_str} released'
-    if all_released:
-        msg += '\n[TRACE]        → All keys released'
-    return msg
+# Verbose formatting functions are imported from common.verbose_formatter
+# Re-export them for backward compatibility with detector code that imports from here
 
 
 def format_verbose_header() -> str:
@@ -100,31 +78,4 @@ Detecting key combinations (no time restrictions)
 """
 
 
-def format_verbose_tap_result(is_valid: bool, duration: float, timeout: float, keys: set) -> str:
-    """Format a verbose tap validation result.
-
-    Args:
-        is_valid: Whether the tap was valid
-        duration: Duration of the tap in seconds
-        timeout: Timeout threshold in seconds
-        keys: Set of keys that were pressed
-
-    Returns:
-        str: Formatted validation result message
-    """
-    # format_keys_display already imported at module level
-    keys_str = format_keys_display(keys)
-    
-    if is_valid:
-        return f'[DEBUG] ✓ Valid tap: {keys_str} (duration: {duration:.3f}s ≤ {timeout:.3f}s)'
-    else:
-        return f'[DEBUG] ✗ Invalid tap: {keys_str} (duration: {duration:.3f}s > {timeout:.3f}s)'
-
-
-def format_verbose_waiting() -> str:
-    """Format the verbose waiting message.
-
-    Returns:
-        str: Formatted waiting message
-    """
-    return '\n[DEBUG] Waiting for key events...'
+# format_verbose_tap_result and format_verbose_waiting are imported from common.verbose_formatter

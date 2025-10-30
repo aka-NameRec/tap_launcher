@@ -1,7 +1,7 @@
 """Tap monitoring and detection logic.
 
 This module implements the core tap detection logic using keyboard backend abstraction.
-Supports both X11 (via pynput) and Wayland (via evdev) through the backend system.
+Uses evdev backend which works on both X11 and Wayland.
 """
 
 from collections.abc import Callable
@@ -12,10 +12,13 @@ from typing import Any
 
 from common.backends import KeyboardBackend, create_backend
 from common.key_normalizer import is_modifier_key, normalize_key
-from detector.formatter import format_verbose_press
-from detector.formatter import format_verbose_release
-from detector.formatter import format_verbose_tap_result
-from detector.formatter import format_verbose_waiting
+from common.logging_utils import get_logger
+from common.verbose_formatter import (
+    format_verbose_press,
+    format_verbose_release,
+    format_verbose_tap_result,
+    format_verbose_waiting,
+)
 
 
 @dataclass
@@ -87,6 +90,7 @@ class TapMonitor:
         self.on_keys_detected = on_keys_detected
         self.on_tap_invalid = on_tap_invalid
         self.check_timer_delay = check_timer_delay
+        self.logger = get_logger('common.tap_monitor')
         
         # Create or use provided backend (auto-detects X11 vs Wayland)
         self.backend = backend or create_backend()
@@ -95,7 +99,7 @@ class TapMonitor:
         """Start monitoring keyboard events.
 
         This method blocks and listens for keyboard events until interrupted.
-        Uses the configured backend (pynput for X11, evdev for Wayland).
+        Uses the configured evdev backend (works on both X11 and Wayland).
         """
         self.backend.start(
             on_press=self._on_press,
@@ -114,12 +118,12 @@ class TapMonitor:
         """Handle key press event.
 
         Args:
-            key: The pynput Key or KeyCode that was pressed
+            key: Canonical key name (str) like 'ctrl_l', 'a', 'delete'
         """
         # Ignore auto-repeat (key already pressed)
         if key in self.state.pressed_keys:
             if self.verbose:
-                print(f'[TRACE] {normalize_key(key)} already pressed (autorepeat), ignoring')  # noqa: T201
+                self.logger.debug(f'{normalize_key(key)} already pressed (autorepeat), ignoring')
             return
 
         current_time = perf_counter()
@@ -139,8 +143,7 @@ class TapMonitor:
                 self.state.start_time = None
 
                 if self.verbose:
-                    print(f'[TRACE] 0.000s: {normalized_key} pressed')  # noqa: T201
-                    print('[TRACE]        → Tap started, timer delayed until second key')  # noqa: T201
+                    self.logger.debug('0.000s: %s pressed → Tap started, timer delayed until second key', normalized_key)
             else:
                 # Start timer immediately (or no timer in display mode)
                 self.state.start_time = current_time if self.validate_timeout else None
@@ -148,10 +151,9 @@ class TapMonitor:
 
                 if self.verbose:
                     if self.validate_timeout:
-                        print(format_verbose_press(normalized_key, 0.0, is_first=True))  # noqa: T201
+                        self.logger.debug(format_verbose_press(normalized_key, 0.0, is_first=True))
                     else:
-                        print(f'[TRACE] 0.000s: {normalized_key} pressed')  # noqa: T201
-                        print('[TRACE]        → Tap started (no validation)')  # noqa: T201
+                        self.logger.debug('0.000s: %s pressed → Tap started (no validation)', normalized_key)
 
         # Additional key in an ongoing tap
         else:
@@ -163,8 +165,7 @@ class TapMonitor:
                 self.state.timer_delayed = False
 
                 if self.verbose:
-                    print(f'[TRACE] 0.000s: {normalized_key} pressed')  # noqa: T201
-                    print('[TRACE]        → Timer started NOW (second key)')  # noqa: T201
+                    self.logger.debug('0.000s: %s pressed → Timer started NOW (second key)', normalized_key)
 
             # Timer is already running (validation mode)
             elif self.validate_timeout and self.state.start_time is not None:
@@ -173,7 +174,7 @@ class TapMonitor:
                 # Check if timeout already exceeded
                 if elapsed > self.timeout:
                     if self.verbose:
-                        print(f'[TRACE]        → Timeout exceeded during tap: {elapsed:.3f}s > {self.timeout:.3f}s')  # noqa: T201
+                        self.logger.debug('Timeout exceeded during tap: %.3fs > %.3fs', elapsed, self.timeout)
 
                     # Reset state and start a new tap
                     self.state.reset()
@@ -181,13 +182,13 @@ class TapMonitor:
                     self.state.is_active = True
 
                     if self.verbose:
-                        print(format_verbose_press(normalized_key, 0.0, is_first=True))  # noqa: T201
+                        self.logger.debug(format_verbose_press(normalized_key, 0.0, is_first=True))
                 elif self.verbose:
-                    print(format_verbose_press(normalized_key, elapsed, is_first=False))  # noqa: T201
+                    self.logger.debug(format_verbose_press(normalized_key, elapsed, is_first=False))
 
             # Display mode - just log the key
             elif not self.validate_timeout and self.verbose:
-                print(f'[TRACE] {normalized_key} pressed')  # noqa: T201
+                self.logger.debug('%s pressed', normalized_key)
 
         # Add key to pressed and combination sets
         self.state.pressed_keys.add(key)
@@ -200,27 +201,27 @@ class TapMonitor:
             duration = end_time - self.state.start_time if self.state.start_time else 0.0
 
             if self.verbose:
-                print(f'[DEBUG] Non-modifier pressed, completing tap, duration: {duration:.3f}s')  # noqa: T201
+                self.logger.debug('Non-modifier pressed, completing tap, duration: %.3fs', duration)
 
             # Validation mode: check timeout
             if self.validate_timeout:
                 # If timer never started (only one key with delayed timer)
                 if self.state.start_time is None:
                     if self.verbose:
-                        print('[DEBUG] Tap invalid: timer never started (insufficient keys)')  # noqa: T201
+                        self.logger.debug('Tap invalid: timer never started (insufficient keys)')
 
                     if self.on_tap_invalid:
                         self.on_tap_invalid('insufficient keys', self.state.tap_combination.copy(), 0.0)
 
                     self.state.reset()
                     if self.verbose:
-                        print(format_verbose_waiting())  # noqa: T201
+                        self.logger.debug(format_verbose_waiting())
                     return
 
                 is_valid = duration <= self.timeout
 
                 if self.verbose:
-                    print(format_verbose_tap_result(is_valid, duration, self.timeout, self.state.tap_combination))  # noqa: T201
+                    self.logger.debug(format_verbose_tap_result(is_valid, duration, self.timeout, self.state.tap_combination))
 
                 if is_valid:
                     # Valid tap detected!
@@ -248,13 +249,13 @@ class TapMonitor:
             self.state.reset()
 
             if self.verbose:
-                print(format_verbose_waiting())  # noqa: T201
+                self.logger.debug(format_verbose_waiting())
 
     def _on_release(self, key: Any) -> None:
         """Handle key release event.
 
         Args:
-            key: The pynput Key or KeyCode that was released
+            key: Canonical key name (str) like 'ctrl_l', 'a', 'delete'
         """
         # NEW SEMANTIC: Check if this is a release during an active tap
         # Tap completes on FIRST key release, not when all keys are released
@@ -267,7 +268,7 @@ class TapMonitor:
             if self.verbose:
                 elapsed = perf_counter() - self.state.start_time if self.state.start_time else 0.0
                 all_released = len(self.state.pressed_keys) == 0
-                print(format_verbose_release(normalize_key(key), elapsed, all_released))  # noqa: T201
+                self.logger.debug(format_verbose_release(normalize_key(key), elapsed, all_released))
 
         # Process the combination on FIRST key release (not when all keys are released)
         # This solves "stuck keys" problem and provides more natural tap semantics
@@ -275,7 +276,7 @@ class TapMonitor:
             # If timer was never started (only one key pressed with delayed timer)
             if self.validate_timeout and self.state.start_time is None:
                 if self.verbose:
-                    print('[DEBUG] Tap invalid: timer never started (insufficient keys)')  # noqa: T201
+                    self.logger.debug('Tap invalid: timer never started (insufficient keys)')
 
                 # This is an invalid tap - combination requires at least 2 keys
                 if self.on_tap_invalid:
@@ -285,7 +286,7 @@ class TapMonitor:
                 self.state.reset()
 
                 if self.verbose:
-                    print(format_verbose_waiting())  # noqa: T201
+                    self.logger.debug(format_verbose_waiting())
                 return
 
             # Calculate duration
@@ -293,14 +294,14 @@ class TapMonitor:
             duration = end_time - self.state.start_time if self.state.start_time else 0.0
 
             if self.verbose:
-                print(f'[DEBUG] Modifier-only tap, first key released, duration: {duration:.3f}s')  # noqa: T201
+                self.logger.debug('Modifier-only tap, first key released, duration: %.3fs', duration)
 
             # Validation mode: check timeout
             if self.validate_timeout:
                 is_valid = duration <= self.timeout
 
                 if self.verbose:
-                    print(format_verbose_tap_result(is_valid, duration, self.timeout, self.state.tap_combination))  # noqa: T201
+                    self.logger.debug(format_verbose_tap_result(is_valid, duration, self.timeout, self.state.tap_combination))
 
                 if is_valid:
                     # Valid tap detected (modifier-only)!
@@ -329,4 +330,4 @@ class TapMonitor:
             self.state.reset()
 
             if self.verbose:
-                print(format_verbose_waiting())  # noqa: T201
+                self.logger.debug(format_verbose_waiting())
