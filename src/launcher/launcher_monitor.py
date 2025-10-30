@@ -5,13 +5,14 @@ This module integrates tap detection with command execution.
 
 import logging
 from typing import Any
+from common.key_normalizer import is_modifier_key
 
 from common.key_normalizer import format_keys_display
 from common.tap_monitor import TapMonitor
 
 from .command_executor import CommandExecutor
 from .hotkey_matcher import HotkeyMatcher
-from .models import AppConfig
+from .models import AppConfig, HotkeyConfig
 
 
 class LauncherMonitor:
@@ -145,7 +146,7 @@ class LauncherMonitor:
 
     def _handle_match(
         self,
-        hotkey: Any,
+        hotkey: 'HotkeyConfig',
         duration: float,
         trigger_key: Any,
         has_non_modifier: bool,

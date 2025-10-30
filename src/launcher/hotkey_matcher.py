@@ -44,7 +44,7 @@ class HotkeyMatcher:
         """Match detected keys against configured hotkeys.
 
         Args:
-            detected_keys: Set of pynput Key/KeyCode objects detected in tap
+            detected_keys: Set of pressed keys (canonical names or objects convertible by normalize_key)
 
         Returns:
             HotkeyConfig if a matching hotkey is found, None otherwise
@@ -76,7 +76,7 @@ class HotkeyMatcher:
         consistent naming (e.g., Key.ctrl_l -> "ctrl_l").
 
         Args:
-            keys: Set of pynput Key/KeyCode objects
+            keys: Set of keys to normalize
 
         Returns:
             list[str]: List of normalized key names
