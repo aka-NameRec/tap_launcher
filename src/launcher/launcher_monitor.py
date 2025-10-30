@@ -64,21 +64,7 @@ class LauncherMonitor:
         This method will block until interrupted (Ctrl+C or SIGTERM).
         Backend (evdev) handles all event emulation internally.
         """
-        self.logger.info(
-            f'Starting tap launcher with timeout {self.config.tap_timeout}s'
-        )
-        self.logger.info(
-            f'Monitoring {len(self.config.hotkeys)} hotkey combination(s)'
-        )
-
-        if self.config.debug_mode:
-            self.logger.debug('Debug mode enabled')
-            # Log all configured hotkeys
-            for hotkey in self.config.hotkeys:
-                keys_str = '+'.join(sorted(hotkey.keys))
-                self.logger.debug(
-                    f"  {keys_str} → {hotkey.command} {' '.join(hotkey.args)}"
-                )
+        self._log_startup()
 
         # Start tap monitor - backend handles all event emulation internally
         try:
@@ -130,41 +116,7 @@ class LauncherMonitor:
         hotkey = self.matcher.match(keys)
 
         if hotkey:
-            # Found a matching hotkey
-            keys_str = '+'.join(sorted(hotkey.keys))
-
-            if hotkey.description:
-                self.logger.info(
-                    f'Tap detected: {hotkey.description} '
-                    f'(keys: {keys_str}, duration: {duration:.3f}s)'
-                )
-            else:
-                self.logger.info(
-                    f'Tap detected: {keys_str} (duration: {duration:.3f}s)'
-                )
-
-            # Execute the command
-            success = self.executor.execute(hotkey)
-
-            if not success:
-                self.logger.warning(
-                    f'Command execution failed for hotkey: {keys_str}'
-                )
-
-            # NEW: Suppress trigger key if it's a non-modifier
-            if has_non_modifier and trigger_key:
-                from common.key_normalizer import is_modifier_key
-                if not is_modifier_key(trigger_key):
-                    # Suppress the non-modifier trigger key
-                    backend = self.tap_monitor.backend
-                    if hasattr(backend, 'suppress_key'):
-                        backend.suppress_key(trigger_key)
-                        if self.config.debug_mode:
-                            self.logger.debug(f'Suppressed trigger key: {trigger_key}')
-                    else:
-                        self.logger.warning(
-                            'Backend doesn\'t support key suppression'
-                        )
+            self._handle_match(hotkey, duration, trigger_key, has_non_modifier)
 
         else:
             # No matching hotkey - all keys will be emitted normally by backend
@@ -174,5 +126,55 @@ class LauncherMonitor:
                     f'Tap detected but no matching hotkey: {keys_str} '
                     f'(duration: {duration:.3f}s)'
                 )
+
+    def _log_startup(self) -> None:
+        """Log startup information and configured hotkeys."""
+        self.logger.info(
+            f'Starting tap launcher with timeout {self.config.tap_timeout}s'
+        )
+        self.logger.info(
+            f'Monitoring {len(self.config.hotkeys)} hotkey combination(s)'
+        )
+        if self.config.debug_mode:
+            self.logger.debug('Debug mode enabled')
+            for hotkey in self.config.hotkeys:
+                keys_str = '+'.join(sorted(hotkey.keys))
+                self.logger.debug(
+                    f"  {keys_str} → {hotkey.command} {' '.join(hotkey.args)}"
+                )
+
+    def _handle_match(
+        self,
+        hotkey: Any,
+        duration: float,
+        trigger_key: Any,
+        has_non_modifier: bool,
+    ) -> None:
+        """Handle matched hotkey: log, execute, and suppress trigger key if needed."""
+        keys_str = '+'.join(sorted(hotkey.keys))
+        if hotkey.description:
+            self.logger.info(
+                f'Tap detected: {hotkey.description} '
+                f'(keys: {keys_str}, duration: {duration:.3f}s)'
+            )
+        else:
+            self.logger.info(
+                f'Tap detected: {keys_str} (duration: {duration:.3f}s)'
+            )
+        success = self.executor.execute(hotkey)
+        if not success:
+            self.logger.warning(
+                f'Command execution failed for hotkey: {keys_str}'
+            )
+        if has_non_modifier and trigger_key:
+            from common.key_normalizer import is_modifier_key
+            if not is_modifier_key(trigger_key):
+                backend = self.tap_monitor.backend
+                if hasattr(backend, 'suppress_key'):
+                    backend.suppress_key(trigger_key)
+                    if self.config.debug_mode:
+                        self.logger.debug(f'Suppressed trigger key: {trigger_key}')
+                else:
+                    self.logger.warning('Backend doesn\'t support key suppression')
 
 

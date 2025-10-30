@@ -63,15 +63,7 @@ class CommandExecutor:
                 self.logger.info(f'Executing: {cmd_str}')
 
         try:
-            # Launch command in background
-            # - stdout/stderr redirected to DEVNULL to avoid blocking
-            # - start_new_session=True detaches from parent process
-            subprocess.Popen(  # noqa: S603
-                cmd,
-                stdout=subprocess.DEVNULL,
-                stderr=subprocess.DEVNULL,
-                start_new_session=True,
-            )
+            self._spawn_background(cmd)
         except FileNotFoundError:
             self.logger.exception(
                 f'Command not found: {hotkey.command}\n'
@@ -122,5 +114,19 @@ class CommandExecutor:
             bool: True if file is executable
         """
         return os.access(path, os.X_OK)
+
+    def _spawn_background(self, cmd: list[str]) -> None:
+        """Spawn a background process for the given command.
+
+        - stdout/stderr redirected to DEVNULL to avoid blocking
+        - start_new_session=True detaches from parent process
+        """
+        subprocess.Popen(  # noqa: S603
+            cmd,
+            stdout=subprocess.DEVNULL,
+            stderr=subprocess.DEVNULL,
+            start_new_session=True,
+            text=False,
+        )
 
 
