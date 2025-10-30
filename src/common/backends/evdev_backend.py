@@ -523,22 +523,22 @@ class EvdevBackend:
                     try:
                         pynput_key = evdev_to_pynput_key(key_event.keycode)
                     except KeyError:
-                        # fallback, treat as non-modifier, emulate directly (same as before, but per-device)
-                        if value == 1:
+                        # Fallback: emulate raw keycode immediately with syn
+                        if value == 1:  # Press
+                            # Register press before emitting so suppression (if any) can see it
+                            self.pressed_keys.add(key_ref)
                             if self.uinput_device:
                                 self.uinput_device.write(ecodes.EV_KEY, keycode, 1)
-                                self.buffered_presses.add(key_ref)
-                                self.pressed_keys.add(key_ref)
+                                self.uinput_device.syn()
                             continue
-                        elif value == 0:
-                            if self.uinput_device and key_ref in self.buffered_presses:
+                        elif value == 0:  # Release
+                            if self.uinput_device:
                                 self.uinput_device.write(ecodes.EV_KEY, keycode, 0)
                                 self.uinput_device.syn()
-                                self.buffered_presses.discard(key_ref)
                             self.pressed_keys.discard(key_ref)
                             self.suppressed_keys.discard(key_ref)
                             continue
-                        elif value == 2:
+                        elif value == 2:  # Repeat
                             if self.uinput_device:
                                 self.uinput_device.write(ecodes.EV_KEY, keycode, 2)
                                 self.uinput_device.syn()
@@ -570,6 +570,8 @@ class EvdevBackend:
                     
                     # Process event based on state
                     if value == 1:  # Press
+                        # Register press before callback to allow synchronous suppression to target this press
+                        self.pressed_keys.add(key_ref)
                         # CRITICAL: Call callback BEFORE emulation
                         # This allows suppression to happen before event reaches system
                         try:
@@ -587,18 +589,17 @@ class EvdevBackend:
                         # After callback, check if we should suppress
                         if self._should_suppress_event(key_ref, value):
                             self.logger.debug(f'Suppressing press: keycode={keycode}')
-                            self.pressed_keys.add(key_ref)
                             continue  # Don't emulate
                         
-                        # Emulate press - accumulate in buffer, DON'T sync yet
+                        # Emulate press immediately with syn for all keys
                         if self.uinput_device:
                             if event_count <= 5:
                                 self.logger.debug(f'Emulating press for keycode {keycode}')
                             self.uinput_device.write(ecodes.EV_KEY, keycode, 1)
-                            self.buffered_presses.add(key_ref)
-                            self.pressed_keys.add(key_ref)
+                            self.uinput_device.syn()
                         else:
                             self.logger.error('No uinput device! Events will not be emulated back to system!')
+                        # pressed_keys was added before; keep it until release
                     
                     elif value == 0:  # Release
                         # Call callback
@@ -618,15 +619,12 @@ class EvdevBackend:
                             self.suppressed_keys.discard(key_ref)
                             continue  # Don't emulate
                         
-                        # Emulate release - send complete packet [Press, Release]
+                        # Emulate release immediately with syn for all keys
                         if self.uinput_device:
-                            if key_ref in self.buffered_presses:
-                                # Press was emulated - send complete packet
-                                self.uinput_device.write(ecodes.EV_KEY, keycode, 0)
-                                self.uinput_device.syn()  # CRITICAL: sync here
-                                self.buffered_presses.discard(key_ref)
-                            # If press was suppressed, don't emulate release either
-                            self.pressed_keys.discard(key_ref)
+                            self.uinput_device.write(ecodes.EV_KEY, keycode, 0)
+                            self.uinput_device.syn()
+                        self.pressed_keys.discard(key_ref)
+                        self.buffered_presses.discard(key_ref)
                     
                     elif value == 2:  # Repeat
                         # Check suppression
