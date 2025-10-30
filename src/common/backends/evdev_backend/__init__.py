@@ -146,21 +146,7 @@ class EvdevBackend:
             key_name = None
         return ParsedEvent(device_id, key_ref, keycode, value, key_name)
 
-    def _handle_unknown_key(self, parsed: ParsedEvent) -> bool:
-        if parsed.key_name is not None:
-            return False
-        if parsed.value == 1:
-            self.state.register_press(parsed.key_ref)
-            self._emit_press(parsed.keycode)
-            return True
-        if parsed.value == 0:
-            self._emit_release(parsed.keycode)
-            self.state.discard_press(parsed.key_ref)
-            return True
-        if parsed.value == 2:
-            self._emit_repeat(parsed.keycode)
-            return True
-        return True
+    # Unknown-key handling is delegated to EventProcessor.handle_unknown
 
     def _handle_suppressed(self, key_ref: tuple[int, int], value: int) -> bool:
         return self.state.is_suppressed(key_ref, value)
@@ -380,7 +366,7 @@ class EvdevBackend:
             router = EventRouter(
                 logger=self.logger,
                 parse_event=parse_event,
-                handle_unknown=self._handle_unknown_key,
+                handle_unknown=processor.handle_unknown,
                 handle_value=lambda evt: processor.process(evt, on_press, on_release),
             )
             router.run(self._event_queue.get, self._stop_event)

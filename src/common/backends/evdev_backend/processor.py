@@ -13,6 +13,23 @@ class EventProcessor:
         self._handle_suppressed = handle_suppressed
         self._safe_call = safe_call
 
+    def handle_unknown(self, evt: ParsedEvent) -> bool:
+        """Fallback for unknown keycodes. Returns True if handled (consumed)."""
+        if evt.key_name is not None:
+            return False
+        if evt.value == 1:
+            self.state.register_press(evt.key_ref)
+            self.emitter.emit_press(evt.keycode)
+            return True
+        if evt.value == 0:
+            self.emitter.emit_release(evt.keycode)
+            self.state.discard_press(evt.key_ref)
+            return True
+        if evt.value == 2:
+            self.emitter.emit_repeat(evt.keycode)
+            return True
+        return True
+
     def process(self, evt: ParsedEvent, on_press: Callable[[Any], None], on_release: Callable[[Any], None]) -> None:
         key_ref: KeyRef = evt.key_ref
         keycode = evt.keycode
