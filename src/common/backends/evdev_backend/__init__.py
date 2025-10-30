@@ -34,6 +34,7 @@ from .key_state import KeyState
 from .device_manager import DeviceManager
 from .event_router import EventRouter
 from .processor import EventProcessor
+from .parser import parse_event
 from .types import ParsedEvent
 from .uinput_writer import UInputWriter
 from .key_state import KeyState
@@ -313,7 +314,7 @@ class EvdevBackend:
     def start(self, on_press: Callable[[Any], None], on_release: Callable[[Any], None]) -> None:
         import evdev
         # Resolve devices via DeviceManager
-        dm = DeviceManager(self.logger, self._device_has_keyboard_caps, self._is_virtual_uinput)
+        dm = DeviceManager(self.logger)
         if self.device_name:
             devices_found = dm.discover_by_name(self.device_name)
             if not devices_found:
@@ -378,7 +379,7 @@ class EvdevBackend:
             )
             router = EventRouter(
                 logger=self.logger,
-                parse_event=self._parse_event,
+                parse_event=parse_event,
                 handle_unknown=self._handle_unknown_key,
                 handle_value=lambda evt: processor.process(evt, on_press, on_release),
             )

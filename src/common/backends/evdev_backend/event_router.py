@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 from typing import Any
+import queue
 
 
 class EventRouter:
@@ -16,7 +17,7 @@ class EventRouter:
         while not stop_event.is_set():
             try:
                 device, event = queue_get(timeout=0.1)
-            except Exception:
+            except queue.Empty:
                 continue
             try:
                 event_count += 1

@@ -1,17 +1,35 @@
 from __future__ import annotations
 
 from contextlib import suppress
-from typing import Any, Iterable
+from typing import Any, Iterable, Callable
 
 import evdev
 from evdev import ecodes
 
 
 class DeviceManager:
-    def __init__(self, logger: Any, capability_check, virtual_check) -> None:
+    def __init__(self, logger: Any) -> None:
         self.logger = logger
-        self._capability_check = capability_check
-        self._virtual_check = virtual_check
+
+    @staticmethod
+    def device_has_keyboard_caps(device: Any) -> bool:
+        """Return True if the evdev device exposes keyboard capabilities."""
+        caps = device.capabilities()
+        if ecodes.EV_KEY not in caps:
+            return False
+        keys = caps[ecodes.EV_KEY]
+        return (
+            ecodes.KEY_LEFTCTRL in keys
+            or ecodes.KEY_RIGHTCTRL in keys
+            or ecodes.KEY_LEFTALT in keys
+            or ecodes.KEY_A in keys
+        )
+
+    @staticmethod
+    def is_virtual_uinput(device: Any, path: str) -> bool:
+        name_l = device.name.lower()
+        path_l = str(path).lower()
+        return 'uinput' in name_l or 'uinput' in path_l
 
     def list_devices(self) -> list[str]:
         return evdev.list_devices()
@@ -21,13 +39,13 @@ class DeviceManager:
         for path in self.list_devices():
             try:
                 dev = evdev.InputDevice(path)
-                if not self._capability_check(dev):
+                if not self.device_has_keyboard_caps(dev):
                     continue
                 devices.append(dev)
             except (OSError, PermissionError):
                 continue
         # Prefer physical
-        physical = [d for d in devices if not self._virtual_check(d, d.path)]
+        physical = [d for d in devices if not self.is_virtual_uinput(d, d.path)]
         return physical or devices
 
     def discover_by_name(self, name: str) -> list[Any]:
@@ -36,13 +54,13 @@ class DeviceManager:
         for path in self.list_devices():
             try:
                 dev = evdev.InputDevice(path)
-                if not self._capability_check(dev):
+                if not self.device_has_keyboard_caps(dev):
                     continue
                 if name_l in dev.name.lower():
                     matches.append(dev)
             except (OSError, PermissionError):
                 continue
-        physical = [d for d in matches if not self._virtual_check(d, d.path)]
+        physical = [d for d in matches if not self.is_virtual_uinput(d, d.path)]
         return physical or matches
 
     def grab_all(self, devices: Iterable[Any]) -> list[Any]:
@@ -61,7 +79,17 @@ class DeviceManager:
             with suppress(Exception):
                 dev.ungrab()
 
-    def start_reader_threads(self, devices: Iterable[Any], queue_put, stop_event) -> list[Any]:
+    def start_reader_threads(
+        self,
+        devices: Iterable[Any],
+        queue_put: Callable[[tuple[Any, Any]], None],
+        stop_event,
+    ) -> list[Any]:
+        """Start reader threads for devices.
+
+        queue_put: Callable that accepts (device, event). Should raise queue.Full on overflow.
+        stop_event: threading.Event-like with is_set().
+        """
         import threading
         threads = []
         for dev in devices:
@@ -82,8 +110,8 @@ class DeviceManager:
                     break
                 try:
                     queue_put((device, event))
-                except Exception:  # noqa: BLE001
-                    self.logger.warning(f'Event queue put failed for {device.name}')
+                except Exception as e:  # catch queue.Full if propagated
+                    self.logger.warning(f'Event queue put failed for {device.name}: {e}')
         except OSError as e:
             self.logger.error(f'Error reading from device {device.name}: {e}')
         except Exception as e:  # noqa: BLE001
