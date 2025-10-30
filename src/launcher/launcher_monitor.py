@@ -28,7 +28,6 @@ class LauncherMonitor:
         config: AppConfig,
         matcher: HotkeyMatcher,
         executor: CommandExecutor,
-        device_name: str | None = None,
     ) -> None:
         """Initialize the launcher monitor.
 
@@ -36,16 +35,15 @@ class LauncherMonitor:
             config: Application configuration
             matcher: Hotkey matcher for finding matching hotkeys
             executor: Command executor for running commands
-            device_name: Optional keyboard device name to use
         """
         self.config = config
         self.matcher = matcher
         self.executor = executor
         self.logger = get_logger('tap_launcher.monitor')
 
-        # Create backend with optional device name
+        # Create backend (auto-detects all available keyboards)
         from common.backends.detector import create_backend
-        backend = create_backend(device_name=device_name)
+        backend = create_backend()
 
         # Create TapMonitor from tap_detector with validation
         # Backend (evdev) handles all event emulation internally

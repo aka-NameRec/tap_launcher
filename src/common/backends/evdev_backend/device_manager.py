@@ -48,21 +48,6 @@ class DeviceManager:
         physical = [d for d in devices if not self.is_virtual_uinput(d, d.path)]
         return physical or devices
 
-    def discover_by_name(self, name: str) -> list[Any]:
-        name_l = name.lower()
-        matches = []
-        for path in self.list_devices():
-            try:
-                dev = evdev.InputDevice(path)
-                if not self.device_has_keyboard_caps(dev):
-                    continue
-                if name_l in dev.name.lower():
-                    matches.append(dev)
-            except (OSError, PermissionError):
-                continue
-        physical = [d for d in matches if not self.is_virtual_uinput(d, d.path)]
-        return physical or matches
-
     def grab_all(self, devices: Iterable[Any]) -> list[Any]:
         grabbed = []
         for dev in devices:

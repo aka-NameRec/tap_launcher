@@ -135,7 +135,6 @@ def _start_daemon(
     app_config: AppConfig,
     foreground: bool,
     debug: bool = False,
-    device_name: str | None = None
 ) -> None:
     """Start the daemon process."""
     # If not foreground, daemonize
@@ -154,7 +153,7 @@ def _start_daemon(
     # Create components
     matcher = HotkeyMatcher(app_config.hotkeys)
     executor = CommandExecutor(log_commands=True)
-    monitor = LauncherMonitor(app_config, matcher, executor, device_name=device_name)
+    monitor = LauncherMonitor(app_config, matcher, executor)
 
     # Setup signal handlers for graceful shutdown
     setup_signal_handlers(monitor, daemon, foreground)
@@ -179,25 +178,18 @@ def start(
     config: Path | None = typer.Option(None, help="Path to config file"),
     foreground: bool = typer.Option(False, "--foreground", help="Run in foreground"),
     debug: bool = typer.Option(False, "--debug", help="Enable debug logging"),
-    device_name: str | None = typer.Option(
-        None,
-        '--device-name',
-        help='Force specific keyboard device by name (partial match, case-insensitive). '
-             'If not specified, auto-detects the first physical keyboard.',
-    ),
 ) -> None:
     """Start the tap launcher daemon.
 
     By default, the launcher runs as a background daemon process.
     Use --foreground to run in the current terminal (useful for testing).
     Use --debug to enable detailed debug logging.
-    Use --device-name to specify a specific keyboard device.
+    All available keyboard devices are automatically detected and monitored.
     
     Examples:
         tap-launcher start
         tap-launcher start --foreground
         tap-launcher start --debug
-        tap-launcher start --device-name "A4tech"
         tap-launcher start --config /path/to/config.toml --debug
     """
     
@@ -219,7 +211,7 @@ def start(
     app_config = _validate_config(config, debug)
 
     # Start the daemon
-    _start_daemon(daemon, app_config, foreground, debug, device_name=device_name)
+    _start_daemon(daemon, app_config, foreground, debug)
 
 
 @app.command()

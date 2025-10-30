@@ -18,20 +18,20 @@ logger = get_logger('common.backend')
 
 def create_backend(
     backend_name: str | None = None,
-    device_name: str | None = None,
     **kwargs: Any
 ) -> KeyboardBackend:
     """Create evdev keyboard backend.
     
     This factory function always creates EvdevBackend, which works on both
-    X11 and Wayland. The backend_name parameter is kept for compatibility
+    X11 and Wayland. The backend automatically detects and uses all available
+    physical keyboard devices. The backend_name parameter is kept for compatibility
     but is ignored (always creates evdev).
     
     Args:
         backend_name: Ignored for compatibility (always uses evdev).
                      Previously supported 'pynput', 'evdev', 'auto'.
         **kwargs: Additional arguments passed to EvdevBackend constructor
-                 (e.g., device_path).
+                 (e.g., device_path for advanced use cases).
     
     Returns:
         KeyboardBackend: Initialized EvdevBackend instance.
@@ -44,15 +44,16 @@ def create_backend(
                  - Permission denied accessing /dev/input/
     
     Examples:
-        # Create backend (always evdev)
+        # Create backend (auto-detects all keyboards)
         backend = create_backend()
         
-        # With custom device path
+        # With custom device path (advanced use case)
         backend = create_backend(device_path='/dev/input/event3')
-        
+    
     Note:
         Previous pynput backend support has been removed. All applications
         now use evdev backend for unified behavior and key suppression support.
+        All available physical keyboards are automatically detected and monitored.
     """
     # Always use evdev backend (works on both X11 and Wayland)
     if backend_name is not None and backend_name != 'evdev':
@@ -62,9 +63,6 @@ def create_backend(
         )
     
     try:
-        # Pass device_name to backend if provided
-        if device_name:
-            kwargs['device_name'] = device_name
         backend = EvdevBackend(**kwargs)
         logger.info(f'Created backend: {backend.get_backend_name()}')
         return backend

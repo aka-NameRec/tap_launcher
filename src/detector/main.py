@@ -19,12 +19,6 @@ app = typer.Typer(help='🎹 Tap Detector - Detect keyboard key combinations')
 @app.callback(invoke_without_command=True)
 def main(
     ctx: typer.Context,
-    device_name: str | None = typer.Option(
-        None,
-        '--device-name',
-        help='Force specific keyboard device by name (partial match, case-insensitive). '
-             'If not specified, auto-detects the first physical keyboard.',
-    ),
     verbose: bool = typer.Option(
         False,
         '--verbose', '-v',
@@ -42,8 +36,6 @@ def main(
         $ tap-detector
 
         $ tap-detector --verbose
-
-        $ tap-detector --device-name "A4tech"
 
     Press Ctrl+C to exit the detector.
     
@@ -69,17 +61,8 @@ def main(
     else:
         sys.stdout.write(format_header())
 
-    # Create backend with optional device name
-    backend = create_backend(device_name=device_name)
-    
-    # Log selected device name for user visibility
-    if device_name:
-        typer.echo(
-            f'📍 Selected keyboard device (by name): {device_name}',
-            err=True
-        )
-    
-    # The actual device name will be logged by backend in start() method
+    # Create backend (auto-detects all available keyboards)
+    backend = create_backend()
     
     # Create and start monitor (no timeout = display mode)
     monitor = TapMonitor(
@@ -139,11 +122,6 @@ def _list_keyboard_devices() -> None:
             typer.echo(f'     Path: {device["path"]}')
         typer.echo()
     
-    # Show usage hint
-    if physical_keyboards:
-        example_name = physical_keyboards[0]['name'].split()[0] if physical_keyboards else None
-        if example_name:
-            typer.echo(f'💡 To use a specific device:\n   tap-detector --device-name "{example_name}"')
 
 
 @app.command(name='device-list')
@@ -151,11 +129,9 @@ def device_list() -> None:
     """List all available keyboard devices.
     
     Displays physical and virtual keyboard devices found in the system.
-    Use the device name with --device-name option to select a specific device.
     
     Example:
         $ tap-detector device-list
-        $ tap-detector --device-name "A4tech"
     """
     _list_keyboard_devices()
 

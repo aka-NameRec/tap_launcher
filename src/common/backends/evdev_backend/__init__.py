@@ -28,12 +28,10 @@ class EvdevBackend:
     def __init__(
         self,
         device_path: str | None = None,
-        device_name: str | None = None
     ) -> None:
         from common.logging_utils import get_logger
         self.logger = get_logger('common.backend.evdev')
         self.device_path = device_path
-        self.device_name = device_name
         self.devices: list[Any] = []
         self.uinput_device: UInputWriter | None = None
         import threading
@@ -118,14 +116,7 @@ class EvdevBackend:
         import evdev
         # Resolve devices via DeviceManager
         dm = DeviceManager(self.logger)
-        if self.device_name:
-            devices_found = dm.discover_by_name(self.device_name)
-            if not devices_found:
-                raise BackendNotAvailableError(
-                    f'No keyboard device found matching name "{self.device_name}"'
-                )
-            self.devices = devices_found
-        elif self.device_path:
+        if self.device_path:
             try:
                 device = evdev.InputDevice(self.device_path)
                 self.devices = [device]
