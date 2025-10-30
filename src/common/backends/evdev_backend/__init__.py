@@ -28,18 +28,19 @@ from evdev import ecodes, categorize
 
 from ..base import BackendNotAvailableError
 from ..key_mapping import evdev_to_key_name, key_name_to_evdev_code
+from .types import ParsedEvent
+from .uinput_writer import UInputWriter
+from .key_state import KeyState
+from .device_manager import DeviceManager
+from .event_router import EventRouter
+from .processor import EventProcessor
+from .types import ParsedEvent
+from .uinput_writer import UInputWriter
+from .key_state import KeyState
 
 
 class EvdevBackend:
     """Keyboard backend using evdev (Wayland/X11 compatible)."""
-
-    @dataclass(slots=True)
-    class ParsedEvent:
-        device_id: int
-        key_ref: tuple[int, int]
-        keycode: int
-        value: int  # 0 release, 1 press, 2 repeat
-        key_name: str | None
 
     def __init__(
         self,
@@ -50,16 +51,14 @@ class EvdevBackend:
         self.device_path = device_path
         self.device_name = device_name
         self.devices: list[Any] = []
-        self.uinput_device: Any = None
+        self.uinput_device: UInputWriter | None = None
         import threading
         self._stop_event = threading.Event()
         self._device_threads: list[threading.Thread] = []
         self._event_queue: queue.Queue[tuple[Any, Any]] = queue.Queue(maxsize=1000)
 
         # Per-device/press key state
-        self.suppressed_keys: set[tuple[int, int]] = set()
-        self.pressed_keys: set[tuple[int, int]] = set()
-        self.buffered_presses: set[tuple[int, int]] = set()
+        self.state = KeyState()
 
         try:
             import evdev  # noqa: F401
@@ -131,7 +130,7 @@ class EvdevBackend:
             import traceback
             self.logger.debug(traceback.format_exc())
 
-    def _parse_event(self, device: Any, event: Any) -> 'EvdevBackend.ParsedEvent | None':
+    def _parse_event(self, device: Any, event: Any) -> ParsedEvent | None:
         if event.type != ecodes.EV_KEY:
             return None
         key_event = categorize(event)
@@ -144,19 +143,18 @@ class EvdevBackend:
             key_name = evdev_to_key_name(key_event.keycode)
         except Exception:
             key_name = None
-        return EvdevBackend.ParsedEvent(device_id, key_ref, keycode, value, key_name)
+        return ParsedEvent(device_id, key_ref, keycode, value, key_name)
 
-    def _handle_unknown_key(self, parsed: 'EvdevBackend.ParsedEvent') -> bool:
+    def _handle_unknown_key(self, parsed: ParsedEvent) -> bool:
         if parsed.key_name is not None:
             return False
         if parsed.value == 1:
-            self.pressed_keys.add(parsed.key_ref)
+            self.state.register_press(parsed.key_ref)
             self._emit_press(parsed.keycode)
             return True
         if parsed.value == 0:
             self._emit_release(parsed.keycode)
-            self.pressed_keys.discard(parsed.key_ref)
-            self.suppressed_keys.discard(parsed.key_ref)
+            self.state.discard_press(parsed.key_ref)
             return True
         if parsed.value == 2:
             self._emit_repeat(parsed.keycode)
@@ -164,13 +162,7 @@ class EvdevBackend:
         return True
 
     def _handle_suppressed(self, key_ref: tuple[int, int], value: int) -> bool:
-        if self._should_suppress_event(key_ref, value):
-            if value == 0:
-                self.pressed_keys.discard(key_ref)
-                self.buffered_presses.discard(key_ref)
-                self.suppressed_keys.discard(key_ref)
-            return True
-        return False
+        return self.state.is_suppressed(key_ref, value)
 
     # -------------- uinput creation --------------
     def _create_uinput_device(self) -> None:
@@ -179,15 +171,7 @@ class EvdevBackend:
         if not self.devices:
             raise RuntimeError('Cannot create uinput: no devices initialized')
         try:
-            from evdev import UInput
-            # Combine capabilities from all devices
-            all_keys: set[int] = set()
-            for device in self.devices:
-                if ecodes.EV_KEY in device.capabilities():
-                    all_keys.update(device.capabilities()[ecodes.EV_KEY])
-            capabilities = {ecodes.EV_KEY: list(all_keys)}
-            self.uinput_device = UInput(capabilities)
-            self.logger.info('Created uinput virtual device for event emulation')
+            self.uinput_device = UInputWriter.create_from_devices(self.devices, self.logger)
         except OSError as e:
             self.logger.error(
                 f'Failed to create uinput device: {e}. '
@@ -328,14 +312,15 @@ class EvdevBackend:
     # -------------------- Public API --------------------
     def start(self, on_press: Callable[[Any], None], on_release: Callable[[Any], None]) -> None:
         import evdev
-        # Resolve devices
+        # Resolve devices via DeviceManager
+        dm = DeviceManager(self.logger, self._device_has_keyboard_caps, self._is_virtual_uinput)
         if self.device_name:
-            devices_found = self._find_keyboard_by_name(self.device_name)
+            devices_found = dm.discover_by_name(self.device_name)
             if not devices_found:
                 raise BackendNotAvailableError(
                     f'No keyboard device found matching name "{self.device_name}"'
                 )
-            self.devices = devices_found if isinstance(devices_found, list) else [devices_found]
+            self.devices = devices_found
         elif self.device_path:
             try:
                 device = evdev.InputDevice(self.device_path)
@@ -346,10 +331,10 @@ class EvdevBackend:
                     f'Cannot access device {self.device_path}: {e}'
                 ) from e
         else:
-            devices_found = self._find_keyboard_device()
+            devices_found = dm.discover_auto()
             if not devices_found:
                 raise BackendNotAvailableError('No keyboard devices found')
-            self.devices = devices_found if isinstance(devices_found, list) else [devices_found]
+            self.devices = devices_found
 
         if len(self.devices) == 1:
             device_info = f'{self.devices[0].name} ({self.devices[0].path})'
@@ -362,27 +347,9 @@ class EvdevBackend:
         self._stop_event.clear()
 
         # Grab devices
-        grabbed_devices = []
-        try:
-            for device in self.devices:
-                try:
-                    device.grab()
-                    grabbed_devices.append(device)
-                    self.logger.debug(f'Device grabbed: {device.name}')
-                except OSError as e:
-                    self.logger.warning(
-                        f'Failed to grab device {device.name}: {e}. '
-                        f'Events may reach system before processing.'
-                    )
-            if not grabbed_devices:
-                raise BackendNotAvailableError(
-                    'Failed to grab any keyboard devices. All devices may be busy.'
-                )
-        except Exception as e:
-            for device in grabbed_devices:
-                with suppress(Exception):
-                    device.ungrab()
-            raise
+        grabbed_devices = dm.grab_all(self.devices)
+        if not grabbed_devices:
+            raise BackendNotAvailableError('Failed to grab any keyboard devices. All devices may be busy.')
 
         # Create uinput
         try:
@@ -397,80 +364,25 @@ class EvdevBackend:
             )
 
         try:
-            # Start reader threads
+            # Start reader threads via DeviceManager
             self.logger.info(f'Starting event read threads for {len(self.devices)} device(s)...')
-            import threading
-            for device in self.devices:
-                thread = threading.Thread(
-                    target=self._read_device_loop,
-                    args=(device,),
-                    daemon=True,
-                    name=f'evdev-read-{device.name}'
-                )
-                thread.start()
-                self._device_threads.append(thread)
+            self._device_threads = dm.start_reader_threads(self.devices, self._event_queue.put, self._stop_event)
 
-            # Main processing loop
-            event_count = 0
-            self.logger.info('Starting main event processing loop...')
-            while not self._stop_event.is_set():
-                try:
-                    device, event = self._event_queue.get(timeout=0.1)
-                except queue.Empty:
-                    continue
-                try:
-                    event_count += 1
-                    if event_count == 1:
-                        self.logger.info('First event received - event loop is working')
-                    parsed = self._parse_event(device, event)
-                    if not parsed:
-                        if event_count <= 3:
-                            self.logger.debug(f'Non-keyboard event: type={event.type}, code={event.code}')
-                        continue
-                    key_ref = parsed.key_ref
-                    keycode = parsed.keycode
-                    value = parsed.value
-                    key_name = parsed.key_name
-                    if event_count <= 5:
-                        self.logger.debug(
-                            f'Keyboard event #{event_count}: code={keycode}, value={value}, name={key_name}'
-                        )
-                    # Unknown key fallback
-                    if self._handle_unknown_key(parsed):
-                        continue
-
-                    if value == 1:  # Press
-                        self.pressed_keys.add(key_ref)
-                        if event_count <= 5:
-                            self.logger.debug(f'Calling on_press({key_name})')
-                        self._safe_call('on_press', on_press, key_name)
-                        if self._handle_suppressed(key_ref, value):
-                            self.logger.debug(f'Suppressing press: keycode={keycode}')
-                            continue
-                        if event_count <= 5:
-                            self.logger.debug(f'Emulating press for keycode {keycode}')
-                        self._emit_press(keycode)
-
-                    elif value == 0:  # Release
-                        self._safe_call('on_release', on_release, key_name)
-                        if self._handle_suppressed(key_ref, value):
-                            self.logger.debug(f'Suppressing release: keycode={keycode}')
-                            continue
-                        self._emit_release(keycode)
-                        self.pressed_keys.discard(key_ref)
-                        self.buffered_presses.discard(key_ref)
-
-                    elif value == 2:  # Repeat
-                        if self._handle_suppressed(key_ref, value):
-                            self.logger.debug(f'Suppressing repeat: keycode={keycode}')
-                            continue
-                        self._emit_repeat(keycode)
-
-                except Exception as e:  # noqa: BLE001
-                    self.logger.error(f'Error processing event: {e}')
-                    import traceback
-                    self.logger.debug(traceback.format_exc())
-                    continue
+            # Run router with processor
+            processor = EventProcessor(
+                logger=self.logger,
+                state=self.state,
+                emitter=self.uinput_device,
+                handle_suppressed=self._handle_suppressed,
+                safe_call=self._safe_call,
+            )
+            router = EventRouter(
+                logger=self.logger,
+                parse_event=self._parse_event,
+                handle_unknown=self._handle_unknown_key,
+                handle_value=lambda evt: processor.process(evt, on_press, on_release),
+            )
+            router.run(self._event_queue.get, self._stop_event)
         except Exception as e:
             self.logger.error(f'Error in main event loop: {e}')
             raise BackendNotAvailableError(
