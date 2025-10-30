@@ -24,11 +24,11 @@ Listening for key combinations...
 """
 
 
-def format_keys_detected(keys: set, duration: float) -> str:
+def format_keys_detected(keys: set[str], duration: float) -> str:
     """Format a key combination detection message.
 
     Args:
-        keys: Set of pynput Key/KeyCode objects that were detected
+        keys: Set of canonical key names (strings) that were detected
         duration: Duration of the key combination in seconds (ignored in display)
 
     Returns:

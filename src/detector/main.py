@@ -1,11 +1,12 @@
 """Main entry point for tap-detector CLI application."""
 
+import logging
 import sys
-from typing import Any
 
 import typer
 
 from common.backends.detector import create_backend
+from common.backends.evdev_backend.device_manager import DeviceManager
 from common.tap_monitor import TapMonitor
 
 from .formatter import format_header
@@ -54,9 +55,9 @@ def main(
 
     # Define callback for key detection
     def on_keys_detected(
-        keys: set[Any],
+        keys: set[str],
         duration: float,
-        trigger_key: Any,
+        trigger_key: str,
         has_non_modifier: bool
     ) -> None:
         """Called when keys are detected."""
@@ -73,7 +74,10 @@ def main(
     
     # Log selected device name for user visibility
     if device_name:
-        print(f'📍 Selected keyboard device (by name): {device_name}', file=sys.stderr)
+        typer.echo(
+            f'📍 Selected keyboard device (by name): {device_name}',
+            err=True
+        )
     
     # The actual device name will be logged by backend in start() method
     
@@ -95,10 +99,12 @@ def main(
 def _list_keyboard_devices() -> None:
     """List all available keyboard devices."""
     import evdev
-    from evdev import ecodes
+    
+    logger = logging.getLogger('detector.device_list')
+    device_manager = DeviceManager(logger)
     
     try:
-        device_paths = evdev.list_devices()
+        device_paths = device_manager.list_devices()
     except PermissionError:
         typer.echo(
             '❌ Permission denied accessing /dev/input/\n'
@@ -119,21 +125,14 @@ def _list_keyboard_devices() -> None:
     for path in device_paths:
         try:
             device = evdev.InputDevice(path)
-            caps = device.capabilities()
             
-            if ecodes.EV_KEY in caps:
-                keys = caps[ecodes.EV_KEY]
-                if (ecodes.KEY_LEFTCTRL in keys or 
-                    ecodes.KEY_RIGHTCTRL in keys or
-                    ecodes.KEY_LEFTALT in keys or
-                    ecodes.KEY_A in keys):
-                    
-                    device_name_lower = device.name.lower()
-                    path_lower = str(path).lower()
-                    if 'uinput' in device_name_lower or 'uinput' in path_lower:
-                        virtual_keyboards.append(device)
-                    else:
-                        physical_keyboards.append(device)
+            if not DeviceManager.device_has_keyboard_caps(device):
+                continue
+            
+            if DeviceManager.is_virtual_uinput(device, path):
+                virtual_keyboards.append(device)
+            else:
+                physical_keyboards.append(device)
         except (OSError, PermissionError):
             continue
     
