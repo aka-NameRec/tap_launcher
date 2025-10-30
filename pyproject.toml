@@ -11,8 +11,8 @@ dependencies = [
 ]
 
 [project.scripts]
-detect = "tap_detector.main:app"
-launch = "tap_launcher.main:app"
+detect = "detector.main:app"
+launch = "launcher.main:app"
 
 [build-system]
 requires = ["hatchling"]
@@ -61,4 +61,4 @@ force-single-line = true
 quote-style = "single"
 
 [tool.hatch.build.targets.wheel]
-packages = ["src/common", "src/tap_detector", "src/tap_launcher"]
+packages = ["src/common", "src/detector", "src/launcher"]

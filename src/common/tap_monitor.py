@@ -12,10 +12,10 @@ from typing import Any
 
 from common.backends import KeyboardBackend, create_backend
 from common.key_normalizer import is_modifier_key, normalize_key
-from tap_detector.formatter import format_verbose_press
-from tap_detector.formatter import format_verbose_release
-from tap_detector.formatter import format_verbose_tap_result
-from tap_detector.formatter import format_verbose_waiting
+from detector.formatter import format_verbose_press
+from detector.formatter import format_verbose_release
+from detector.formatter import format_verbose_tap_result
+from detector.formatter import format_verbose_waiting
 
 
 @dataclass
