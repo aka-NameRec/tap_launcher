@@ -199,4 +199,12 @@ class EvdevBackend:
         """
         self.key_state.mark_suppressed_for_active(key_name)
 
+    def get_backend_name(self) -> str:
+        """Return the name of this backend for logging and debugging.
+
+        Returns:
+            Human-readable backend name (e.g., "evdev (Wayland/X11)")
+        """
+        return 'evdev (Wayland/X11)'
+
 
