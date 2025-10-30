@@ -8,6 +8,7 @@ from typing import Any
 
 import typer
 
+from common.logging_utils import get_logger
 
 from .command_executor import CommandExecutor
 from .config_loader import ConfigLoader
