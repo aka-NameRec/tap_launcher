@@ -5,7 +5,9 @@ naming conventions based on module paths.
 """
 
 import logging
-from typing import Any
+import sys
+from datetime import datetime
+from pathlib import Path
 
 
 def get_logger(name: str | None = None) -> logging.Logger:
@@ -41,21 +43,56 @@ def get_logger(name: str | None = None) -> logging.Logger:
     return logging.getLogger(name)
 
 
-def setup_logging_for_module(module: Any, default_name: str | None = None) -> logging.Logger:
-    """Set up logging for a module using its __name__ attribute.
+class ISOFormatter(logging.Formatter):
+    """Log formatter with ISO timestamp including milliseconds.
 
-    Convenience function that extracts logger name from module's __name__.
+    Formats log messages as:
+        <ISO-datetime-with-ms> <log-level> [<module>:<lineno>]: <message>
+    """
+
+    def format(self, record: logging.LogRecord) -> str:
+        """Format log record with ISO timestamp."""
+        # Generate ISO timestamp with milliseconds
+        timestamp = datetime.fromtimestamp(record.created).isoformat(timespec='milliseconds')
+        
+        # Format: <timestamp> <level> [<module>:<lineno>]: <message>
+        return f'{timestamp} {record.levelname} [{record.module}:{record.lineno}]: {record.getMessage()}'
+
+
+def setup_logging_handler(
+    logger: logging.Logger,
+    log_level: str = 'INFO',
+    foreground: bool = True,
+    log_file: Path | None = None,
+) -> None:
+    """Set up logging handler based on foreground/background mode.
 
     Args:
-        module: Module object (typically imported with `__import__` or passed directly)
-        default_name: Fallback name if module.__name__ is not available
-
-    Returns:
-        logging.Logger: Configured logger instance
-
-    Examples:
-        >>> logger = setup_logging_for_module(sys.modules[__name__])
+        logger: Logger instance to configure
+        log_level: Logging level (DEBUG, INFO, WARNING, ERROR)
+        foreground: If True, log to console. If False, log to file (if log_file provided)
+        log_file: Path to log file (used only when foreground=False)
     """
-    name = getattr(module, '__name__', None) or default_name or 'tap_launcher'
-    return get_logger(name)
-
+    logger.setLevel(getattr(logging, log_level.upper()))
+    
+    # Clear any existing handlers
+    logger.handlers.clear()
+    
+    # Create formatter with ISO timestamp
+    formatter = ISOFormatter()
+    
+    if foreground:
+        # Console handler for foreground mode
+        console_handler = logging.StreamHandler(sys.stderr)
+        console_handler.setLevel(getattr(logging, log_level.upper()))
+        console_handler.setFormatter(formatter)
+        logger.addHandler(console_handler)
+    elif log_file:
+        # File handler for background mode
+        # Create parent directory if needed
+        log_file.parent.mkdir(parents=True, exist_ok=True)
+        
+        file_handler = logging.FileHandler(log_file)
+        file_handler.setLevel(getattr(logging, log_level.upper()))
+        file_handler.setFormatter(formatter)
+        logger.addHandler(file_handler)

@@ -8,6 +8,7 @@ from typing import Any
 from common.key_normalizer import format_keys_display, is_modifier_key
 from common.logging_utils import get_logger
 from common.tap_monitor import TapMonitor
+from common.version import get_version_info
 
 from .command_executor import CommandExecutor
 from .hotkey_matcher import HotkeyMatcher
@@ -127,6 +128,8 @@ class LauncherMonitor:
 
     def _log_startup(self) -> None:
         """Log startup information and configured hotkeys."""
+        version_info = get_version_info()
+        self.logger.info(f'🚀 Tap Launcher {version_info}')
         self.logger.info(
             f'Starting tap launcher with timeout {self.config.tap_timeout}s'
         )

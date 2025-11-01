@@ -296,23 +296,29 @@ tap_launcher/
 │   ├── common/                 # Shared code for both applications
 │   │   ├── backends/           # Keyboard backend abstraction
 │   │   │   ├── base.py         # KeyboardBackend Protocol
-│   │   │   ├── pynput_backend.py  # X11 implementation
-│   │   │   ├── evdev_backend.py   # Wayland implementation
-│   │   │   ├── key_mapping.py     # evdev→pynput key translation
-│   │   │   └── detector.py        # Auto-detection logic
-│   │   └── key_normalizer.py  # Key normalization utilities
-│   ├── tap_detector/           # Tap detector application
-│   │   ├── main.py             # CLI entry point
+│   │   │   ├── detector.py    # Auto-detection logic
+│   │   │   ├── device_listing.py  # Device enumeration
+│   │   │   ├── key_mapping.py     # Key code mapping
+│   │   │   └── evdev_backend/     # evdev implementation (Wayland)
+│   │   │       ├── device_manager.py
+│   │   │       ├── event_router.py
+│   │   │       ├── processor.py
+│   │   │       └── ...
+│   │   ├── key_normalizer.py   # Key normalization utilities
 │   │   ├── tap_monitor.py      # Core tap detection logic
-│   │   ├── formatter.py        # Output formatting
-│   │   └── constants.py        # Constants and version
-│   └── tap_launcher/           # Main launcher daemon
+│   │   ├── logging_utils.py    # Logging configuration
+│   │   └── version.py           # Version information
+│   ├── detector/               # Tap detector application
+│   │   ├── main.py             # CLI entry point
+│   │   └── formatter.py        # Output formatting
+│   └── launcher/               # Main launcher daemon
 │       ├── main.py             # CLI entry point
-│       ├── launcher_monitor.py # Background monitoring
-│       ├── command_executor.py # Command execution
+│       ├── monitor.py           # Background monitoring
+│       ├── command_executor.py  # Command execution
 │       ├── config_loader.py    # Configuration management
 │       ├── hotkey_matcher.py   # Hotkey matching logic
-│       └── daemon_manager.py   # Process management
+│       ├── daemon_manager.py   # Process management
+│       └── models.py           # Configuration models
 ├── config/
 │   └── tap-launcher.toml.example  # Example configuration
 ├── docs/                        # Documentation

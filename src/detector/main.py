@@ -7,6 +7,7 @@ import typer
 from common.backends.detector import create_backend
 from common.backends.device_listing import list_keyboard_devices
 from common.logging_utils import get_logger
+from common.logging_utils import setup_logging_handler
 from common.tap_monitor import TapMonitor
 
 from .formatter import format_header
@@ -44,6 +45,14 @@ def main(
     # If a subcommand was invoked, don't run detection
     if ctx.invoked_subcommand is not None:
         return
+
+    # Setup logging (detector always runs in foreground, so log to console)
+    logger = get_logger('tap_detector')
+    setup_logging_handler(
+        logger=logger,
+        log_level='INFO',
+        foreground=True,
+    )
 
     # Define callback for key detection
     def on_keys_detected(

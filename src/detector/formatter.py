@@ -5,8 +5,8 @@ including TOML configuration fragments. Generic verbose formatting is provided
 by common.verbose_formatter.
 """
 
-from .constants import __version__
 from common.key_normalizer import format_keys_display
+from common.version import get_version_info
 from common.key_normalizer import format_keys_toml
 from common.verbose_formatter import (
     format_verbose_press,
@@ -22,7 +22,8 @@ def format_header() -> str:
     Returns:
         str: Formatted header string
     """
-    return f"""🎹 Tap Detector v{__version__}
+    version_info = get_version_info()
+    return f"""🎹 Tap Detector {version_info}
 ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 Detecting key combinations (no time restrictions)
 Press Ctrl+C to exit
@@ -70,7 +71,8 @@ def format_verbose_header() -> str:
     Returns:
         str: Formatted header string
     """
-    return f"""🎹 Tap Detector v{__version__} (verbose mode)
+    version_info = get_version_info()
+    return f"""🎹 Tap Detector {version_info} (verbose mode)
 ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 Detecting key combinations (no time restrictions)
 

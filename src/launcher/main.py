@@ -9,13 +9,15 @@ from typing import Any
 import typer
 
 from common.logging_utils import get_logger
+from common.logging_utils import setup_logging_handler
+from common.version import get_version_info
 
 from .command_executor import CommandExecutor
 from .config_loader import ConfigLoader
 from .daemon_manager import DaemonManager
 from .daemon_manager import daemonize
 from .hotkey_matcher import HotkeyMatcher
-from .launcher_monitor import LauncherMonitor
+from .monitor import LauncherMonitor
 from .models import AppConfig
 
 app = typer.Typer(
@@ -24,11 +26,12 @@ app = typer.Typer(
 )
 
 
-def setup_logging(config: AppConfig, debug: bool = False) -> None:
+def setup_logging(config: AppConfig, foreground: bool, debug: bool = False) -> None:
     """Setup logging configuration.
 
     Args:
         config: Application configuration with logging settings
+        foreground: Whether running in foreground mode (True = console, False = file)
         debug: Whether to force debug logging settings
     """
     # Apply debug settings if requested
@@ -39,34 +42,14 @@ def setup_logging(config: AppConfig, debug: bool = False) -> None:
 
     # Create logger
     logger = get_logger('tap_launcher')
-    logger.setLevel(getattr(logging, config.log_level))
-
-    # Clear any existing handlers
-    logger.handlers.clear()
-
-    # Console handler (only if not daemonized, i.e., if stderr is a tty)
-    if sys.stderr.isatty():
-        console_handler = logging.StreamHandler()
-        console_handler.setLevel(getattr(logging, config.log_level))
-        console_formatter = logging.Formatter(
-            '%(levelname)s: %(message)s'
-        )
-        console_handler.setFormatter(console_formatter)
-        logger.addHandler(console_handler)
-
-    # File handler (if log file is configured)
-    if config.log_file:
-        # Create parent directory if needed
-        config.log_file.parent.mkdir(parents=True, exist_ok=True)
-
-        file_handler = logging.FileHandler(config.log_file)
-        file_handler.setLevel(getattr(logging, config.log_level))
-        file_formatter = logging.Formatter(
-            '%(asctime)s [%(name)s] %(levelname)s: %(message)s',
-            datefmt='%Y-%m-%d %H:%M:%S'
-        )
-        file_handler.setFormatter(file_formatter)
-        logger.addHandler(file_handler)
+    
+    # Setup handler based on foreground mode
+    setup_logging_handler(
+        logger=logger,
+        log_level=config.log_level,
+        foreground=foreground,
+        log_file=config.log_file if not foreground else None,
+    )
 
 
 def setup_signal_handlers(monitor: LauncherMonitor, daemon: DaemonManager, is_foreground: bool) -> None:
@@ -149,7 +132,7 @@ def _start_daemon(
         typer.echo('   Press Ctrl+C to stop')
 
     # Setup logging (after daemonization)
-    setup_logging(app_config, debug)
+    setup_logging(app_config, foreground, debug)
 
     # Create components
     matcher = HotkeyMatcher(app_config.hotkeys)
@@ -193,6 +176,10 @@ def start(
         tap-launcher start --debug
         tap-launcher start --config /path/to/config.toml --debug
     """
+    
+    # Display version information
+    version_info = get_version_info()
+    typer.echo(f'🚀 Tap Launcher {version_info}')
     
     daemon = DaemonManager()
 
