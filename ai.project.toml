@@ -1,0 +1,36 @@
+ai_standards_version = "1.6.0"
+project_version = "4.1"
+project_release_date = "2025-11-01"
+
+fragments = [
+  "core/base",
+  "core/git-workflow",
+  "core/error-handling",
+]
+
+features = [
+  "conport",
+  "design-first-collaboration",
+  "reasoning-hygiene",
+  "review-lenses",
+  "structured-artifacts",
+  "session-hygiene",
+  "agent-usage-hygiene",
+]
+
+stacks = [
+  "python",
+]
+
+local_overrides = [
+  "docs/ai/project-rules.md",
+]
+
+optional_local_overrides = []
+
+[tooling]
+agents = []
+
+[metadata]
+project_name = "tap-launcher"
+notes = "Linux keyboard tap-combination detector and command launcher daemon."
