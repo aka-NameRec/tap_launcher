@@ -1,25 +1,32 @@
 """Daemon process management for tap-launcher.
 
-This module handles PID file management and process control.
+This module handles PID file management and process control using python-daemon.
 """
 
-import errno
-import fcntl
+import contextlib
 import os
 import signal
-import sys
 import time
 from pathlib import Path
+
+from daemon import DaemonContext
+from daemon.pidfile import TimeoutPIDLockFile
+
+
+# Path to /dev/null for daemon stdio redirection
+_DEV_NULL = '/dev/null'
 
 
 class DaemonManager:
     """Manage daemon process with PID file and exclusive lock.
 
     This class handles:
-    - Preventing multiple instances via fcntl.flock
+    - Preventing multiple instances via file locking (python-daemon)
     - Writing PID file for process identification
     - Stopping daemon process
     - Automatic lock cleanup on process exit
+
+    Uses python-daemon library for standard PEP 3143 daemonization.
     """
 
     def __init__(
@@ -34,75 +41,49 @@ class DaemonManager:
         if pid_file is None:
             pid_file = Path.home() / '.local/share/tap-launcher/tap-launcher.pid'
         self.pid_file = pid_file
-        self.pid_fd: int | None = None  # File descriptor with lock
+        self._lock_file: TimeoutPIDLockFile | None = None
+        self._daemon_context: DaemonContext | None = None
 
         # Ensure parent directory exists
         self.pid_file.parent.mkdir(parents=True, exist_ok=True)
 
     def acquire_lock(self) -> bool:
-        """Acquire exclusive lock on PID file.
+        """Check if lock can be acquired (check for running instance).
 
-        This method opens the PID file and attempts to acquire an exclusive
-        lock using fcntl.flock. If successful, it writes the current PID to
-        the file. The file descriptor is kept open to maintain the lock.
+        This method checks if another instance is already running by
+        attempting to acquire a lock on the PID file. This does NOT
+        keep the lock - it's just a check.
 
-        The lock is automatically released by the kernel when the process exits.
+        For actual lock acquisition and PID writing, use daemonize().
 
         Returns:
-            bool: True if lock acquired successfully, False if another instance
-            is already running
+            bool: True if lock can be acquired (no other instance running),
+            False if another instance is already running
         """
         try:
-            # Open PID file (create if doesn't exist)
-            self.pid_fd = os.open(
-                self.pid_file,
-                os.O_CREAT | os.O_RDWR,
-                0o600
+            lock_file = TimeoutPIDLockFile(
+                str(self.pid_file),
+                timeout=0.0,  # Non-blocking
             )
-
-            # Try to acquire exclusive lock (non-blocking)
-            fcntl.flock(self.pid_fd, fcntl.LOCK_EX | fcntl.LOCK_NB)
-
-            # Lock acquired! Write current PID to file
-            os.ftruncate(self.pid_fd, 0)
-            pid_bytes = f'{os.getpid()}\n'.encode()
-            os.write(self.pid_fd, pid_bytes)
-            os.fsync(self.pid_fd)
-
-            # Keep file descriptor open to maintain the lock
-            return True  # noqa: TRY300
-        except OSError as e:
-            if e.errno in (errno.EACCES, errno.EAGAIN, errno.EWOULDBLOCK):
-                # Lock is already held by another process
-                if self.pid_fd is not None:
-                    os.close(self.pid_fd)
-                    self.pid_fd = None
-                return False
-            # Re-raise other errors
-            raise
-
-    def update_pid(self) -> None:
-        """Update PID in the lock file.
-
-        This should be called after daemonize() (fork) to update the PID
-        in the file, since the PID changes after fork but the lock is
-        maintained through the inherited file descriptor.
-        """
-        if self.pid_fd is None and not self.acquire_lock():
-            raise RuntimeError('Failed to re-acquire lock in daemon process')  # noqa: TRY003
-
-        # Write new PID to the already-locked file
-        if self.pid_fd is not None:
-            os.ftruncate(self.pid_fd, 0)
-            pid_bytes = f'{os.getpid()}\n'.encode()
-            os.write(self.pid_fd, pid_bytes)
-            os.fsync(self.pid_fd)
+            # Try to acquire lock
+            with lock_file:
+                # Lock acquired → no one is running, we can proceed
+                return True
+        except (OSError, BlockingIOError):
+            # Lock is already held by another process
+            return False
+        except Exception:
+            # Other errors - assume we can't proceed
+            return False
 
     def write_pid_file(self) -> None:
-        """Write PID to file without acquiring lock.
+        """Write PID to file.
 
-        This is used in daemon process where we don't need to acquire
-        a new lock, just write the PID to the file.
+        This is used in foreground mode where PID needs to be written.
+        Lock checking should be done via acquire_lock() before calling this.
+
+        Raises:
+            RuntimeError: If PID file cannot be written
         """
         try:
             # Write PID to file
@@ -122,29 +103,7 @@ class DaemonManager:
         Returns:
             bool: True if another instance holds the lock, False otherwise
         """
-        if not self.pid_file.exists():
-            return False
-
-        try:
-            # Try to open and lock the file (non-blocking)
-            test_fd = os.open(self.pid_file, os.O_RDWR)
-
-            try:
-                # Try to acquire lock
-                fcntl.flock(test_fd, fcntl.LOCK_EX | fcntl.LOCK_NB)
-                # Lock acquired → no one is running
-                fcntl.flock(test_fd, fcntl.LOCK_UN)
-                os.close(test_fd)
-                return False  # noqa: TRY300
-            except OSError as e:
-                # Lock is held → someone is running
-                os.close(test_fd)
-                if e.errno in (errno.EACCES, errno.EAGAIN, errno.EWOULDBLOCK):
-                    return True
-                raise
-
-        except (FileNotFoundError, OSError):
-            return False
+        return not self.acquire_lock()
 
     def get_pid(self) -> int | None:
         """Get PID from PID file.
@@ -152,12 +111,10 @@ class DaemonManager:
         Returns:
             int: PID if available, None otherwise
         """
-        try:
-            if self.pid_file.exists():
+        if self.pid_file.exists():
+            with contextlib.suppress(ValueError, OSError):
                 pid_str = self.pid_file.read_text().strip()
                 return int(pid_str)
-        except (ValueError, OSError):
-            pass
         return None
 
     def stop(self) -> bool:
@@ -220,65 +177,82 @@ class DaemonManager:
         Note: The lock is automatically released by the kernel when the
         process exits, so this is mainly for explicit cleanup.
         """
-        # Release lock and close file descriptor
-        if self.pid_fd is not None:
-            try:
-                fcntl.flock(self.pid_fd, fcntl.LOCK_UN)
-                os.close(self.pid_fd)
-            except OSError:
-                pass  # Already released or error
-            finally:
-                self.pid_fd = None
+        # Close daemon context if open
+        if self._daemon_context is not None:
+            with contextlib.suppress(Exception):
+                self._daemon_context.close()
+            self._daemon_context = None
+
+        # Release lock file reference
+        self._lock_file = None
 
         # Remove PID file
         self.pid_file.unlink(missing_ok=True)
 
+    def daemonize(self, foreground: bool = False) -> None:
+        """Daemonize the process using python-daemon.
+
+        For background mode: Uses DaemonContext as context manager per PEP 3143.
+        The context manager handles fork, detach, and PID file locking.
+
+        For foreground mode: Just writes PID file (lock check should be
+        done via acquire_lock() before calling this).
+
+        Args:
+            foreground: If True, don't daemonize, just write PID file
+
+        Raises:
+            RuntimeError: If lock cannot be acquired or daemonization fails
+        """
+        if foreground:
+            # In foreground mode, just write PID file
+            # Lock should already be checked via acquire_lock()
+            self.write_pid_file()
+            return
+
+        # For background mode, use DaemonContext as context manager
+        # Create lock file - DaemonContext will manage it
+        self._lock_file = TimeoutPIDLockFile(
+            str(self.pid_file),
+            timeout=0.0,  # Non-blocking - will raise if locked
+        )
+
+        # Open /dev/null files for stdio redirection
+        devnull_read = open(_DEV_NULL, 'r')  # noqa: SIM115
+        devnull_write = open(_DEV_NULL, 'w')  # noqa: SIM115
+
+        # Create daemon context with pidfile
+        # DaemonContext will acquire the lock and write PID automatically
+        # If lock cannot be acquired, it will raise an exception
+        self._daemon_context = DaemonContext(
+            pidfile=self._lock_file,
+            stdin=devnull_read,
+            stdout=devnull_write,
+            stderr=devnull_write,
+        )
+
+        # According to PEP 3143, DaemonContext should be used as context manager
+        # The __enter__ method calls open() which forks - parent exits, child continues
+        # After fork, we're in the daemon (child) process inside the with block
+        # However, we can't use 'with' here because we need to return to caller
+        # So we call open() directly, which is equivalent to entering the context
+        try:
+            # This will fork and detach from terminal
+            # Parent process exits here via os._exit() in detach_process_context()
+            # Child process continues execution after this call
+            self._daemon_context.open()
+            # After this point, we're in the daemon (child) process
+        except (OSError, BlockingIOError) as e:
+            raise RuntimeError(f'Failed to daemonize: {e}') from e  # noqa: TRY003
+
 
 def daemonize() -> None:
-    """Daemonize the current process.
+    """Daemonize the current process using python-daemon.
 
-    This function forks the process into the background and detaches
-    from the controlling terminal.
+    This function is a compatibility wrapper that creates a temporary
+    DaemonManager and uses it for daemonization.
 
-    Reference: https://www.python.org/dev/peps/pep-3143/
+    Note: It's recommended to use DaemonManager.daemonize() instead.
     """
-    # First fork
-    try:
-        pid = os.fork()
-        if pid > 0:
-            # Parent process, exit
-            sys.exit(0)
-    except OSError as e:
-        sys.stderr.write(f'Fork #1 failed: {e}\n')
-        sys.exit(1)
-
-    # Decouple from parent environment
-    os.chdir('/')
-    os.setsid()
-    os.umask(0)
-
-    # Second fork
-    try:
-        pid = os.fork()
-        if pid > 0:
-            # Parent process, exit
-            sys.exit(0)
-    except OSError as e:
-        sys.stderr.write(f'Fork #2 failed: {e}\n')
-        sys.exit(1)
-
-    # Redirect standard file descriptors
-    sys.stdout.flush()
-    sys.stderr.flush()
-
-    # Redirect stdin to /dev/null
-    with Path('/dev/null').open() as devnull:
-        os.dup2(devnull.fileno(), sys.stdin.fileno())
-
-    # Redirect stdout and stderr to /dev/null
-    # (logging will go to file if configured)
-    with Path('/dev/null').open('w') as devnull:
-        os.dup2(devnull.fileno(), sys.stdout.fileno())
-        os.dup2(devnull.fileno(), sys.stderr.fileno())
-
-
+    manager = DaemonManager()
+    manager.daemonize(foreground=False)

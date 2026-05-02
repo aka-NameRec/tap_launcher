@@ -15,7 +15,6 @@ from common.version import get_version_info
 from .command_executor import CommandExecutor
 from .config_loader import ConfigLoader
 from .daemon_manager import DaemonManager
-from .daemon_manager import daemonize
 from .hotkey_matcher import HotkeyMatcher
 from .monitor import LauncherMonitor
 from .models import AppConfig
@@ -121,15 +120,22 @@ def _start_daemon(
     debug: bool = False,
 ) -> None:
     """Start the daemon process."""
-    # If not foreground, daemonize
+    # Daemonize if needed (python-daemon handles this automatically)
     if not foreground:
         typer.echo('✓ Starting tap launcher in background...')
-        daemonize()
-        # Write PID file in daemon process
-        daemon.write_pid_file()
+        try:
+            # Lock already acquired in start() command, now daemonize
+            # DaemonContext will handle fork, detach, and PID file automatically
+            daemon.daemonize(foreground=False)
+        except RuntimeError as e:
+            typer.echo(f'❌ Failed to start daemon: {e}', err=True)
+            typer.echo('   Another instance may be running', err=True)
+            raise typer.Exit(1) from e
     else:
         typer.echo('✓ Starting tap launcher in foreground...')
         typer.echo('   Press Ctrl+C to stop')
+        # Lock already acquired in start() command, just write PID
+        daemon.daemonize(foreground=True)
 
     # Setup logging (after daemonization)
     setup_logging(app_config, foreground, debug)
