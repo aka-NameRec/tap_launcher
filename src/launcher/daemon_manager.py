@@ -98,6 +98,7 @@ class DaemonManager:
         except OSError as e:
             raise RuntimeError(f'First fork failed: {e}') from e  # noqa: TRY003
 
+        os.chdir('/')
         os.setsid()
         os.umask(0)
 

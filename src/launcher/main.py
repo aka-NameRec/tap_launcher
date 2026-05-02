@@ -136,10 +136,33 @@ def _start_daemon(
             typer.echo('\n\n👋 Stopping tap launcher...')
         daemon.cleanup()
         sys.exit(0)
-    except BaseException as e:  # noqa: BLE001
+    except Exception as e:  # noqa: BLE001
         get_logger('tap_launcher').error(f'Fatal error: {e}', exc_info=True)
         daemon.cleanup()
         sys.exit(1)
+
+
+def _run_launcher(
+    config: Path | None,
+    foreground: bool,
+    debug: bool = False,
+) -> None:
+    """Core launcher startup logic, shared by start and restart commands."""
+    daemon = DaemonManager()
+
+    if not daemon.acquire_lock():
+        typer.echo('❌ Another instance of tap-launcher is already running', err=True)
+
+        pid = daemon.get_pid()
+        if pid:
+            typer.echo(f'   PID: {pid}', err=True)
+
+        typer.echo("   Use 'tap-launcher stop' to stop it first", err=True)
+        raise typer.Exit(1)
+
+    app_config = _validate_config(config, debug)
+
+    _start_daemon(daemon, app_config, foreground, debug)
 
 
 @app.command()  # type: ignore[misc]
@@ -161,24 +184,9 @@ def start(
         tap-launcher start --debug
         tap-launcher start --config /path/to/config.toml --debug
     """
-    version_info = get_version_info()
-    typer.echo(f'🚀 Tap Launcher {version_info}')
+    typer.echo(f'🚀 Tap Launcher {get_version_info()}')
 
-    daemon = DaemonManager()
-
-    if not daemon.acquire_lock():
-        typer.echo('❌ Another instance of tap-launcher is already running', err=True)
-
-        pid = daemon.get_pid()
-        if pid:
-            typer.echo(f'   PID: {pid}', err=True)
-
-        typer.echo("   Use 'tap-launcher stop' to stop it first", err=True)
-        raise typer.Exit(1)
-
-    app_config = _validate_config(config, debug)
-
-    _start_daemon(daemon, app_config, foreground, debug)
+    _run_launcher(config, foreground, debug)
 
 
 @app.command()  # type: ignore[misc]
@@ -233,7 +241,7 @@ def restart(
         typer.echo('✓ Stopped')
 
     typer.echo('Starting tap launcher...')
-    start(config=config, foreground=False)
+    _run_launcher(config, foreground=False)
 
 
 @app.command()  # type: ignore[misc]
