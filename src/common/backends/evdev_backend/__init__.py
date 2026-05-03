@@ -94,10 +94,18 @@ class EvdevBackend:
 
     def _cleanup_devices(self) -> None:
         self._stop_event.set()
+
+        self._release_pressed_keys()
+
+        if self.uinput_device:
+            with suppress(Exception):
+                self.uinput_device.close()
+            self.uinput_device = None
+
         for thread in self._device_threads:
             if thread.is_alive():
                 with suppress(Exception):
-                    thread.join(timeout=1.0)
+                    thread.join(timeout=0.2)
         self._device_threads.clear()
         for device in self.devices:
             with suppress(Exception):
@@ -106,10 +114,19 @@ class EvdevBackend:
             with suppress(Exception):
                 device.close()
         self.devices.clear()
-        if self.uinput_device:
-            with suppress(Exception):
-                self.uinput_device.close()
-        self.uinput_device = None
+
+    def _release_pressed_keys(self) -> None:
+        if not self.uinput_device or not self.key_state.pressed_keys:
+            return
+        emitted: set[int] = set()
+        for _dev_id, keycode in list(self.key_state.pressed_keys):
+            if keycode not in emitted:
+                with suppress(Exception):
+                    self.uinput_device.emit_release(keycode)
+                emitted.add(keycode)
+        self.key_state.pressed_keys.clear()
+        self.key_state.suppressed_keys.clear()
+        self.key_state.buffered_presses.clear()
 
     # -------------------- Public API --------------------
     def start(self, on_press: Callable[[Any], None], on_release: Callable[[Any], None]) -> None:
