@@ -1,7 +1,9 @@
 """Main entry point for tap-launcher CLI application."""
 
+import os
 import signal
 import sys
+from dataclasses import dataclass
 from pathlib import Path
 from typing import Any
 
@@ -9,6 +11,7 @@ import typer
 
 from common.logging_utils import get_logger
 from common.logging_utils import setup_logging_handler
+from common.runtime_state import LaunchRuntimeState
 from common.version import get_version_info
 
 from .command_executor import CommandExecutor
@@ -22,6 +25,14 @@ app = typer.Typer(
     help='🚀 Tap Launcher - Launch commands on keyboard tap combinations',
     no_args_is_help=True,
 )
+
+
+@dataclass(frozen=True)
+class ValidatedLaunchConfig:
+    """Validated launcher configuration and the file it was loaded from."""
+
+    config: AppConfig
+    config_path: Path
 
 
 def setup_logging(config: AppConfig, foreground: bool, debug: bool = False) -> None:
@@ -55,6 +66,7 @@ def setup_signal_handlers(monitor: LauncherMonitor, daemon: DaemonManager, is_fo
         daemon: DaemonManager instance for cleanup
         is_foreground: Whether running in foreground mode
     """
+
     def signal_handler(signum: int, _frame: Any) -> None:
         """Handle SIGINT (Ctrl-C) and SIGTERM signals."""
         logger = get_logger('tap_launcher')
@@ -72,10 +84,10 @@ def setup_signal_handlers(monitor: LauncherMonitor, daemon: DaemonManager, is_fo
     signal.signal(signal.SIGTERM, signal_handler)
 
 
-def _validate_config(config: Path | None, debug: bool = False) -> AppConfig:
-    """Validate configuration and return AppConfig."""
+def _validate_config(config: Path | None, debug: bool = False) -> ValidatedLaunchConfig:
+    """Validate configuration and return loaded config with its path."""
     try:
-        app_config, _config_path = ConfigLoader.load(config)
+        app_config, config_path = ConfigLoader.load(config)
     except FileNotFoundError as e:
         typer.echo(f'❌ Config file not found: {e}', err=True)
         typer.echo('\n💡 Tip: Create a config file at:', err=True)
@@ -99,16 +111,17 @@ def _validate_config(config: Path | None, debug: bool = False) -> AppConfig:
                 err=True,
             )
 
-    return app_config
+    return ValidatedLaunchConfig(config=app_config, config_path=config_path)
 
 
 def _start_daemon(
     daemon: DaemonManager,
-    app_config: AppConfig,
+    validated_config: ValidatedLaunchConfig,
     foreground: bool,
     debug: bool = False,
 ) -> None:
     """Start the daemon process."""
+    app_config = validated_config.config
     if not foreground:
         typer.echo('✓ Starting tap launcher in background...')
         try:
@@ -120,6 +133,15 @@ def _start_daemon(
         typer.echo('✓ Starting tap launcher in foreground...')
         typer.echo('   Press Ctrl+C to stop')
         daemon.daemonize(foreground=True)
+
+    daemon.write_runtime_state(
+        LaunchRuntimeState(
+            pid=os.getpid(),
+            config_path=validated_config.config_path,
+            debug=debug,
+            foreground=foreground,
+        )
+    )
 
     setup_logging(app_config, foreground, debug)
 
@@ -160,9 +182,9 @@ def _run_launcher(
         typer.echo("   Use 'tap-launcher stop' to stop it first", err=True)
         raise typer.Exit(1)
 
-    app_config = _validate_config(config, debug)
+    validated_config = _validate_config(config, debug)
 
-    _start_daemon(daemon, app_config, foreground, debug)
+    _start_daemon(daemon, validated_config, foreground, debug)
 
 
 @app.command()  # type: ignore[misc]
@@ -258,10 +280,18 @@ def status() -> None:
 
     if daemon.is_running():
         pid = daemon.get_pid()
+        runtime_state = daemon.read_runtime_state()
         typer.echo('✓ Tap launcher is running')
         if pid:
             typer.echo(f'   PID: {pid}')
+        if runtime_state:
+            typer.echo(f'   Config: {runtime_state.config_path}')
+            typer.echo(f'   Debug: {str(runtime_state.debug).lower()}')
+            typer.echo(f'   Foreground: {str(runtime_state.foreground).lower()}')
+        else:
+            typer.echo('   Runtime state: unavailable')
 
+        if pid:
             try:
                 import psutil  # noqa: PLC0415
 

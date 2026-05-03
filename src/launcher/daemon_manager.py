@@ -12,6 +12,12 @@ import sys
 import time
 from pathlib import Path
 
+from common.runtime_state import PID_FILE
+from common.runtime_state import LaunchRuntimeState
+from common.runtime_state import read_launch_runtime_state
+from common.runtime_state import remove_launch_runtime_state
+from common.runtime_state import write_launch_runtime_state
+
 
 class DaemonManager:
     """Manage daemon process with PID file and exclusive lock.
@@ -33,7 +39,7 @@ class DaemonManager:
             pid_file: Path to PID file (also used for locking)
         """
         if pid_file is None:
-            pid_file = Path.home() / '.local/share/tap-launcher/tap-launcher.pid'
+            pid_file = PID_FILE
         self.pid_file = pid_file
         self._pid_fd: int | None = None
 
@@ -181,6 +187,7 @@ class DaemonManager:
             bool: True if process was stopped, False if not running
         """
         if not self.pid_file.exists():
+            self.remove_runtime_state()
             return False
 
         try:
@@ -197,19 +204,23 @@ class DaemonManager:
                     time.sleep(0.1)
                 except ProcessLookupError:
                     self.pid_file.unlink(missing_ok=True)
+                    self.remove_runtime_state()
                     return True
 
             try:
                 os.kill(pid, signal.SIGKILL)
                 time.sleep(0.5)
                 self.pid_file.unlink(missing_ok=True)
+                self.remove_runtime_state()
                 return True  # noqa: TRY300
             except ProcessLookupError:
                 self.pid_file.unlink(missing_ok=True)
+                self.remove_runtime_state()
                 return True
 
         except (ProcessLookupError, ValueError):
             self.pid_file.unlink(missing_ok=True)
+            self.remove_runtime_state()
             return False
 
         except PermissionError:
@@ -231,3 +242,16 @@ class DaemonManager:
                 self._pid_fd = None
 
         self.pid_file.unlink(missing_ok=True)
+        self.remove_runtime_state()
+
+    def write_runtime_state(self, state: LaunchRuntimeState) -> None:
+        """Persist launcher startup parameters for later restoration."""
+        write_launch_runtime_state(state)
+
+    def read_runtime_state(self) -> LaunchRuntimeState | None:
+        """Read persisted launcher startup parameters."""
+        return read_launch_runtime_state()
+
+    def remove_runtime_state(self) -> None:
+        """Remove persisted launcher startup parameters."""
+        remove_launch_runtime_state()
