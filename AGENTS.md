@@ -249,7 +249,6 @@ Source provenance:
 ## Build & Run
 
 - Install: `uv sync`
-- Run commands via wrapper: `./tap detect --verbose`, `./tap launch start`
 - Run commands via uv: `uv run detect`, `uv run launch start`
 
 ## Code Style
